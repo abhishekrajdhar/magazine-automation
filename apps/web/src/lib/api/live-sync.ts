@@ -36,7 +36,7 @@ async function loadLists() {
 
 let hydratedPages: MagazinePage[] | null = null;
 
-async function loadWorkspace(projectId: string) {
+export async function loadWorkspace(projectId: string) {
   const ws = await live.workspace(projectId);
   const transcriptVideoIds = new Set(ws.videos.map((v) => v.id));
   useWorkspace.setState((s) => ({

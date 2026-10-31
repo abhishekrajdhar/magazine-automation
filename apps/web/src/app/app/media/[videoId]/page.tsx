@@ -244,7 +244,7 @@ function VideoIntelligence() {
         </div>
 
         <Panel className="flex min-h-[640px] min-w-0 flex-col xl:sticky xl:top-4 xl:h-[calc(100dvh-140px)]">
-          <Tabs defaultValue="transcript" className="flex min-h-0 flex-1 flex-col">
+          <Tabs defaultValue={params.get("tab") === "facts" ? "facts" : "transcript"} className="flex min-h-0 flex-1 flex-col">
             <TabsList className="px-3">
               <TabsTrigger value="transcript">
                 <Captions /> Transcript

@@ -108,6 +108,24 @@ class CaptionsUnavailable(Exception):
     pass
 
 
+def _ownership_detail(video_id: str, headers: dict) -> str:
+    """Names the video's channel and the connected account's channels, so the editor knows which account to connect."""
+    s = get_settings()
+    try:
+        mine = httpx.get(f"{DATA_API}/channels", params={"part": "snippet", "mine": "true"}, headers=headers,
+                         timeout=s.http_timeout_seconds).json().get("items") or []
+        params = {"part": "snippet", "id": video_id, **({"key": s.youtube_api_key} if s.youtube_api_key else {})}
+        vid = httpx.get(f"{DATA_API}/videos", params=params, headers={} if s.youtube_api_key else headers,
+                        timeout=s.http_timeout_seconds).json().get("items") or []
+    except (httpx.HTTPError, ValueError):
+        return ""
+    owner = vid[0]["snippet"].get("channelTitle") if vid else None
+    connected = ", ".join(f"\"{c['snippet']['title']}\"" for c in mine) or "no YouTube channel"
+    if not owner:
+        return f"; the connected account manages {connected}"
+    return f"; it belongs to the \"{owner}\" channel, and the connected account manages {connected}"
+
+
 def download_captions_oauth(video_id: str, access_token: str, preferred_lang: str = "en") -> tuple[str, str]:
     """Returns (caption_text_vtt, language). Raises CaptionsUnavailable when not permitted/available."""
     s = get_settings()
@@ -118,8 +136,8 @@ def download_captions_oauth(video_id: str, access_token: str, preferred_lang: st
     except httpx.HTTPError as e:
         raise CaptionsUnavailable(f"Could not reach the YouTube Data API: {e}") from e
     if r.status_code in (401, 403):
-        raise CaptionsUnavailable("The connected Google account is not allowed to list captions for this video "
-                                  "(captions can only be downloaded by the video owner).")
+        raise CaptionsUnavailable("the connected Google account is not allowed to list captions for this video"
+                                  + _ownership_detail(video_id, headers))
     if r.status_code != 200:
         raise CaptionsUnavailable(f"captions.list returned HTTP {r.status_code}")
     tracks = r.json().get("items") or []
@@ -137,7 +155,8 @@ def download_captions_oauth(video_id: str, access_token: str, preferred_lang: st
     except httpx.HTTPError as e:
         raise CaptionsUnavailable(f"captions.download failed: {e}") from e
     if d.status_code in (401, 403):
-        raise CaptionsUnavailable("captions.download was refused: the connected Google account does not own this video.")
+        raise CaptionsUnavailable("captions.download was refused: the connected Google account does not own this video"
+                                  + _ownership_detail(video_id, headers))
     if d.status_code != 200:
         raise CaptionsUnavailable(f"captions.download returned HTTP {d.status_code}")
     return d.text, track.get("snippet", {}).get("language") or preferred_lang

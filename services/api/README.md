@@ -69,7 +69,7 @@ tests/               pytest suite + fixtures/sample-reference.pdf
 
 | Integration | Configure | Behaviour when not configured |
 |---|---|---|
-| LLM | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` (model `LLM_MODEL`, default `claude-opus-5-5`, `LLM_EFFORT`), or `openai_compatible` + `OPENAI_API_KEY`/`OPENAI_BASE_URL` | AI endpoints return `503 llm_not_configured`; video pipeline stops after the transcript with state `unavailable` |
+| LLM | Either `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. `LLM_PROVIDER=auto` (default) uses OpenAI when its key is set, otherwise Anthropic. Models: `OPENAI_MODEL` (default `gpt-4.1`) / `ANTHROPIC_MODEL` (default `claude-opus-5-5`, with `LLM_EFFORT`); `LLM_MODEL` overrides either. Force one with `LLM_PROVIDER=openai_compatible` or `anthropic`; `OPENAI_BASE_URL` points at any OpenAI-compatible server | AI endpoints return `503 llm_not_configured`; video pipeline stops after the transcript with state `unavailable` |
 | Anthropic details | Streaming `beta.messages.stream` + `get_final_message()`, structured output via `output_config.format` (JSON schema), adaptive thinking (default for this model), server-side refusal fallback `fallbacks="default"` (beta `server-side-fallback-2026-07-01`); a final `refusal` is surfaced as an error, never as content | — |
 | Transcription | `TRANSCRIPTION_PROVIDER=openai_compatible` (POST `/audio/transcriptions`, `verbose_json`, audio split into 64 kbps MP3 chunks < 25 MB, timestamps offset per chunk) or `local_whisper` (`uv sync --extra whisper-local`; downloads a model on first use) | video → `unavailable` with a clear message |
 | YouTube metadata | none (oEmbed) | — |

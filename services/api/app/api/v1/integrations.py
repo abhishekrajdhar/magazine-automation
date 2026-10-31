@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -59,23 +60,23 @@ def google_authorize(request: Request, ctx=require("integrations.manage"), redir
 @router.get("/google/callback")
 def google_callback(db: DB, code: str | None = None, state: str | None = None, error: str | None = None):
     s = get_settings()
-    back = f"{s.frontend_url.rstrip('/')}/settings/integrations"
+    back = f"{s.frontend_url.rstrip('/')}/app/settings?tab=integrations"
     if error:
-        return RedirectResponse(f"{back}?google=error&reason={error[:60]}", status_code=302)
+        return RedirectResponse(f"{back}&google=error&reason={quote(error[:60])}", status_code=302)
     payload = decode_token(state or "", typ="oauth_state")
     if not payload or not code:
-        return RedirectResponse(f"{back}?google=error&reason=invalid_state", status_code=302)
+        return RedirectResponse(f"{back}&google=error&reason=invalid_state", status_code=302)
     try:
         tok = google.exchange_code(code)
     except google.GoogleError as e:
         log.warning("Google code exchange failed: %s", e)
-        return RedirectResponse(f"{back}?google=error&reason=exchange_failed", status_code=302)
+        return RedirectResponse(f"{back}&google=error&reason=exchange_failed", status_code=302)
     email = google.fetch_email(tok["access_token"])
     google.store_tokens(db, payload["org"], payload["uid"], tok, email)
     record_activity(db, org_id=payload["org"], actor_id=payload["uid"], verb="connected Google",
                     target=email or "Google account", kind="project")
     db.commit()
-    return RedirectResponse(f"{back}?google=connected", status_code=302)
+    return RedirectResponse(f"{back}&google=connected", status_code=302)
 
 
 @router.delete("/google", response_model=OkResponse)

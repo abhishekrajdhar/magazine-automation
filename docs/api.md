@@ -29,7 +29,7 @@ Base path: `/api/v1`. Served by `services/api` (FastAPI). Interactive OpenAPI do
 | GET | `/integrations/status` | `IntegrationStatus[]` = `{key, label, configured, available, detail, docsHint}` for `database, storage, llm, transcription, youtube_metadata, youtube_captions, google_drive, ffmpeg, yt_dlp, indesign_bridge`. `available` is always the result of a real check (DB query, storage write, model lookup, oEmbed request, `ffmpeg -version`, bridge heartbeat < 2 min). Network checks are cached 5–10 min. |
 | GET | `/integrations/indesign` | `{status: online\|offline\|not_configured, configured, bridges[], lastHeartbeatAt?, indesignVersion?, fontCount, queuedJobs, runningJobs, detail}` |
 | GET | `/integrations/google/authorize` | admin/owner. `409` `{code: google_not_configured, ...}` when `GOOGLE_CLIENT_ID/SECRET` are unset. Browser navigation → `302` to Google; `Accept: application/json` or `?redirect=false` → `{authorizeUrl}`. Scopes: `drive.readonly`, `youtube.force-ssl`, `openid email`. |
-| GET | `/integrations/google/callback` | OAuth redirect target. Stores Fernet-encrypted tokens, then redirects to `{FRONTEND_URL}/settings/integrations?google=connected\|error`. |
+| GET | `/integrations/google/callback` | OAuth redirect target. Stores Fernet-encrypted tokens, then redirects to `{FRONTEND_URL}/app/settings?tab=integrations&google=connected\|error`. |
 | DELETE | `/integrations/google` | admin/owner. Deletes stored Google tokens. |
 
 ## Auth & organisation

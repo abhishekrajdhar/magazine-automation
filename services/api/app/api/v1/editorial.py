@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.deps import DB, CurrentAuth, require
 from app.ids import new_id, utcnow
-from app.models import Article, EventSession, ExtractedFact, MagazinePage, Speaker
+from app.models import Article, EventSession, ExtractedFact, Job, MagazinePage, Speaker
 from app.schemas.editorial import (
     Article as ArticleSchema,
     ArticleCreate,
@@ -18,6 +18,7 @@ from app.schemas.editorial import (
     RejectRequest,
     VerificationResult,
 )
+from app.schemas.pages import Job as JobSchema
 from app.schemas.pages import JobRef
 from app.services import editorial as ed
 from app.services import serializers as ser
@@ -46,6 +47,11 @@ def generate(project_id: str, body: GenerateArticlesRequest, db: DB, ctx=require
     if approved is None:
         raise HTTPException(status_code=409, detail="No approved facts yet. Review and approve extracted facts first; "
                                                     "articles are generated only from approved material.")
+    # A repeated click while the same request is still waiting or running returns that job instead of queueing
+    # a duplicate batch of drafts.
+    for j in _generation_jobs(db, ctx.org_id, p.id, active_only=True):
+        if j.payload.get("types") == list(body.types) and j.payload.get("sessionIds") == list(body.session_ids):
+            return JobRef(job_id=j.id, job=ser.job(j))
     job = enqueue(db, "article_generation", {"projectId": p.id, "types": list(body.types),
                                              "sessionIds": list(body.session_ids), "userId": ctx.user_id},
                   org_id=ctx.org_id, result_ref=p.id)
@@ -53,6 +59,21 @@ def generate(project_id: str, body: GenerateArticlesRequest, db: DB, ctx=require
                     target=p.title, kind="article", project_id=p.id)
     db.commit()
     return JobRef(job_id=job.id, job=ser.job(job))
+
+
+def _generation_jobs(db, org_id: str, project_id: str, *, active_only: bool = False, scan: int = 50) -> list[Job]:
+    """Recent article-generation jobs for a project, newest first (the project id lives in the job payload)."""
+    q = select(Job).where(Job.org_id == org_id, Job.kind == "article_generation")
+    if active_only:
+        q = q.where(Job.status.in_(("queued", "running")))
+    rows = db.scalars(q.order_by(Job.created_at.desc()).limit(scan)).all()
+    return [j for j in rows if (j.payload or {}).get("projectId") == project_id]
+
+
+@router.get("/projects/{project_id}/articles/jobs", response_model=list[JobSchema])
+def generation_jobs(project_id: str, ctx: CurrentAuth, db: DB, limit: int = 5) -> list[JobSchema]:
+    p = get_project(db, ctx, project_id)
+    return [ser.job(j) for j in _generation_jobs(db, ctx.org_id, p.id)[: max(1, min(limit, 20))]]
 
 
 @router.get("/projects/{project_id}/articles", response_model=list[ArticleSchema])

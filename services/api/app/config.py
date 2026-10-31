@@ -73,8 +73,12 @@ class Settings(BaseSettings):
     bridge_job_lease_seconds: int = 2400  # bridge render timeout is 30 min
 
     # --- LLM --------------------------------------------------------------
-    llm_provider: Literal["anthropic", "openai_compatible", "none"] = "anthropic"
-    llm_model: str = "claude-opus-5-5"
+    # auto: OpenAI when OPENAI_API_KEY is set, otherwise Anthropic when
+    # ANTHROPIC_API_KEY is set, otherwise none. Either key alone is enough.
+    llm_provider: Literal["auto", "anthropic", "openai_compatible", "none"] = "auto"
+    llm_model: str = ""  # overrides the per-provider default below when set
+    anthropic_model: str = "claude-opus-5-5"
+    openai_model: str = "gpt-4.1"
     llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
     llm_max_tokens: int = 32000
     llm_timeout_seconds: float = 600.0
@@ -170,6 +174,22 @@ class Settings(BaseSettings):
         key_file.chmod(0o600)
         log.warning("SECRET_KEY not set; generated a development key at %s", key_file)
         return key
+
+    @property
+    def effective_llm_provider(self) -> Literal["anthropic", "openai_compatible", "none"]:
+        if self.llm_provider != "auto":
+            return self.llm_provider
+        if self.openai_api_key:
+            return "openai_compatible"
+        if self.anthropic_api_key:
+            return "anthropic"
+        return "none"
+
+    @property
+    def effective_llm_model(self) -> str:
+        if self.llm_model:
+            return self.llm_model
+        return self.openai_model if self.effective_llm_provider == "openai_compatible" else self.anthropic_model
 
     @property
     def transcription_key(self) -> str:

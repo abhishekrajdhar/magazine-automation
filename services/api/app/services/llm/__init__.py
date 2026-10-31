@@ -1,4 +1,4 @@
-"""LLM provider factory: LLM_PROVIDER=anthropic|openai_compatible|none."""
+"""LLM provider factory: LLM_PROVIDER=auto|anthropic|openai_compatible|none."""
 
 from __future__ import annotations
 
@@ -13,14 +13,17 @@ __all__ = ["LLMError", "LLMNotConfigured", "LLMProvider", "LLMRefused", "get_llm
 
 def get_llm() -> LLMProvider:
     s = get_settings()
-    if s.llm_provider == "anthropic":
+    provider = s.effective_llm_provider
+    if provider == "anthropic":
         from app.services.llm.anthropic_provider import from_settings
 
         return from_settings()
-    if s.llm_provider == "openai_compatible":
+    if provider == "openai_compatible":
         from app.services.llm.openai_compatible import from_settings as oai
 
         return oai()
+    if s.llm_provider == "auto":
+        return NoneProvider("LLM_PROVIDER=auto, but neither OPENAI_API_KEY nor ANTHROPIC_API_KEY is set")
     return NoneProvider()
 
 
@@ -35,7 +38,7 @@ def require_llm() -> LLMProvider:
                 "code": "llm_not_configured",
                 "message": "AI features are unavailable because no LLM provider is configured.",
                 "detail": detail,
-                "hint": "Set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY in services/api/.env, then restart the API.",
+                "hint": "Set OPENAI_API_KEY or ANTHROPIC_API_KEY in services/api/.env, then restart the API.",
             },
         )
     return llm

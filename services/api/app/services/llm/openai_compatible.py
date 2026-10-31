@@ -1,5 +1,5 @@
 """OpenAI-compatible chat-completions provider (any server exposing /chat/completions
-with `response_format: json_schema`). Used only when LLM_PROVIDER=openai_compatible.
+with `response_format: json_schema`). Used when LLM_PROVIDER=openai_compatible, or auto with OPENAI_API_KEY set.
 """
 
 from __future__ import annotations
@@ -119,5 +119,5 @@ class OpenAICompatibleProvider(LLMProvider):
 
 def from_settings() -> OpenAICompatibleProvider:
     s = get_settings()
-    return OpenAICompatibleProvider(api_key=s.openai_api_key, base_url=s.openai_base_url, model=s.llm_model,
+    return OpenAICompatibleProvider(api_key=s.openai_api_key, base_url=s.openai_base_url, model=s.effective_llm_model,
                                     max_tokens=s.llm_max_tokens, timeout=s.llm_timeout_seconds)

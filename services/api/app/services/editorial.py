@@ -208,7 +208,10 @@ def run_article_generation(ctx: JobContext) -> None:
                 art.review_note = (f"Automatic check: {len(bad)} of {len(claims)} quotes/figures could not be fully "
                                    f"verified against the transcript. Run Verify before approving.")
             db.add(art)
-            db.flush()
+            # Commit per article: SQLite allows one writer, and ctx.progress() writes the job row from its own
+            # session, so an open transaction here would block it until "database is locked". It also keeps
+            # finished articles if a later type fails.
+            db.commit()
             created.append(art.id)
         if project.status in ("setup", "ingesting", "analysing"):
             project.status = "editorial"

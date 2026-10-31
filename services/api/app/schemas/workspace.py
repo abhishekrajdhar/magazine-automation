@@ -28,6 +28,8 @@ class IntegrationStatus(CamelModel):
     available: bool
     detail: str
     docs_hint: str
+    # Something the user can do from Settings to make this available, e.g. "connect_google".
+    action: str | None = None
 
 
 class IndesignStatus(CamelModel):

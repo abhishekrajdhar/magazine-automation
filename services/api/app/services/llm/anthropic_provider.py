@@ -1,6 +1,6 @@
 """Anthropic (Claude) provider via the official `anthropic` SDK.
 
-* Model from LLM_MODEL (default `claude-opus-5-5`); thinking is always on for this
+* Model from ANTHROPIC_MODEL (default `claude-opus-5-5`, overridden by LLM_MODEL); thinking is always on for this
   model (adaptive) so the `thinking` parameter is omitted; depth via `output_config.effort`.
 * Structured output via `output_config.format` (JSON schema) — the first text block is JSON.
 * Streaming + `get_final_message()` so long generations don't hit HTTP timeouts.
@@ -114,7 +114,7 @@ class AnthropicProvider(LLMProvider):
         except anthropic.PermissionDeniedError as e:
             raise LLMError(f"Anthropic permission denied: {e.message}") from e
         except anthropic.NotFoundError as e:
-            raise LLMError(f"Model {self.model!r} not found. Check LLM_MODEL.") from e
+            raise LLMError(f"Model {self.model!r} not found. Check ANTHROPIC_MODEL / LLM_MODEL.") from e
         except anthropic.BadRequestError as e:
             raise LLMError(f"Anthropic rejected the request: {e.message}") from e
         except anthropic.RateLimitError as e:
@@ -147,5 +147,5 @@ class AnthropicProvider(LLMProvider):
 
 def from_settings() -> AnthropicProvider:
     s = get_settings()
-    return AnthropicProvider(api_key=s.anthropic_api_key, model=s.llm_model, effort=s.llm_effort,
+    return AnthropicProvider(api_key=s.anthropic_api_key, model=s.effective_llm_model, effort=s.llm_effort,
                              max_tokens=s.llm_max_tokens, timeout=s.llm_timeout_seconds)

@@ -83,6 +83,8 @@ export interface IntegrationStatus {
   available: boolean;
   detail?: string;
   docsHint?: string;
+  /** A step the user can take from Settings to make this available. */
+  action?: "connect_google" | null;
 }
 
 export async function apiHealth(): Promise<boolean> {

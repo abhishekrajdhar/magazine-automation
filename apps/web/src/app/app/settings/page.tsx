@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { BookOpenCheck, Building2, CircleCheck, CircleDashed, CircleX, Database, FlaskConical, KeyRound, Plug, RefreshCw, Server, UserPlus, UserRound, Users } from "lucide-react";
+import { BookOpenCheck, Building2, CircleAlert, CircleCheck, CircleDashed, CircleX, Database, FlaskConical, KeyRound, Plug, RefreshCw, Server, Unplug, UserPlus, UserRound, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/store/workspace";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primit
 import { useApiStatus } from "@/lib/api/use-api-status";
 import type { IntegrationStatus } from "@/lib/api/client";
 import { apiFetch } from "@/lib/api/client";
+import { live } from "@/lib/api/live";
 import type { Role } from "@/lib/domain/types";
 import { formatRelative, initials } from "@/lib/utils/format";
 
@@ -24,11 +25,18 @@ const ROLES: { value: Role; label: string; description: string }[] = [
   { value: "viewer", label: "Viewer", description: "Read-only" },
 ];
 
+/** Why Google sent the editor back without connecting, keyed by the callback's `reason`. */
+const GOOGLE_ERRORS: Record<string, string> = {
+  access_denied: "Google access wasn't granted. If the app is in Testing, make sure this Google account is listed as a test user.",
+  invalid_state: "The Google sign-in link expired. Try connecting again.",
+  exchange_failed: "Google rejected the sign-in. Check that the client secret and redirect URI match the OAuth client, then try again.",
+};
+
 /** What each integration needs, shown when it isn't configured. */
 const EXPECTED: { key: string; label: string; env: string; purpose: string }[] = [
   { key: "database", label: "Database", env: "DATABASE_URL", purpose: "PostgreSQL (Neon / Supabase) in production; SQLite locally." },
   { key: "storage", label: "Object storage", env: "STORAGE_BACKEND, S3_*", purpose: "Videos, audio, PDFs, extracted images and exports." },
-  { key: "llm", label: "LLM provider", env: "LLM_PROVIDER, ANTHROPIC_API_KEY", purpose: "Transcript analysis, article drafting and editing assistance." },
+  { key: "llm", label: "LLM provider", env: "OPENAI_API_KEY or ANTHROPIC_API_KEY", purpose: "Transcript analysis, article drafting and editing assistance." },
   { key: "transcription", label: "Transcription", env: "TRANSCRIPTION_PROVIDER, OPENAI_API_KEY", purpose: "Whisper-compatible speech-to-text for uploads and Drive files." },
   { key: "youtube_metadata", label: "YouTube metadata", env: "—", purpose: "Titles and thumbnails via oEmbed (no key needed)." },
   { key: "youtube_captions", label: "YouTube captions", env: "YOUTUBE_API_KEY + Google OAuth", purpose: "Caption download for videos your account owns." },
@@ -223,8 +231,45 @@ function MembersTab() {
 function IntegrationsTab() {
   const api = useApiStatus();
   const mode = useWorkspace((s) => s.mode);
+  const params = useSearchParams();
+  const router = useRouter();
+  const [googleBusy, setGoogleBusy] = React.useState(false);
   const byKey = (k: string): IntegrationStatus | undefined => api.integrations.find((i) => i.key === k);
   const bridge = byKey("indesign_bridge");
+  const googleConnected = !!byKey("google_drive")?.available;
+
+  // Google's OAuth callback lands here with ?google=connected|error.
+  const googleResult = params.get("google");
+  const googleReason = params.get("reason") ?? "";
+  React.useEffect(() => {
+    if (!googleResult) return;
+    if (googleResult === "connected") toast.success("Google account connected");
+    else toast.error(GOOGLE_ERRORS[googleReason] ?? `Google didn't connect (${googleReason || "unknown error"}).`);
+    router.replace("/app/settings?tab=integrations");
+  }, [googleResult, googleReason, router]);
+
+  const connectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      const { authorizeUrl } = await live.googleAuthorize();
+      window.location.assign(authorizeUrl);
+    } catch (err) {
+      toast.error((err as Error).message);
+      setGoogleBusy(false);
+    }
+  };
+  const confirm = useConfirm();
+  const disconnectGoogle = async () => {
+    const ok = await confirm({ title: "Disconnect Google?", description: "PressFlow will stop reading Drive files and YouTube captions until someone connects again.", confirmLabel: "Disconnect", tone: "danger" });
+    if (!ok) return;
+    try {
+      const res = await live.googleDisconnect();
+      toast.success(res.message);
+      api.refresh();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  };
   return (
     <div className="flex flex-col gap-5">
       <Panel className="flex flex-wrap items-center gap-3 p-4">
@@ -243,16 +288,22 @@ function IntegrationsTab() {
         <ul className="divide-y divide-line">
           {EXPECTED.map((e) => {
             const s = byKey(e.key);
-            const state = !api.online ? "unknown" : s?.available ? "ok" : s?.configured ? "error" : "off";
+            const state = !api.online ? "unknown" : s?.available ? "ok" : s?.configured && s.action ? "action" : s?.configured ? "error" : "off";
             return (
               <li key={e.key} className="flex items-start gap-3 px-4 py-3">
-                {state === "ok" ? <CircleCheck className="mt-0.5 size-4 text-success" /> : state === "error" ? <CircleX className="mt-0.5 size-4 text-danger" /> : <CircleDashed className="mt-0.5 size-4 text-ink-4" />}
+                {state === "ok" ? <CircleCheck className="mt-0.5 size-4 text-success" /> : state === "error" ? <CircleX className="mt-0.5 size-4 text-danger" /> : state === "action" ? <CircleAlert className="mt-0.5 size-4 text-warning" /> : <CircleDashed className="mt-0.5 size-4 text-ink-4" />}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{s?.label ?? e.label}</p>
                   <p className="text-xs text-ink-3">{s?.detail ?? e.purpose}</p>
-                  {state !== "ok" && <p className="mt-1 font-mono text-[11px] text-ink-4">{s?.docsHint ?? e.env}</p>}
+                  {state !== "ok" && state !== "action" && <p className="mt-1 font-mono text-[11px] text-ink-4">{s?.docsHint ?? e.env}</p>}
+                  {s?.action === "connect_google" && state === "action" && (
+                    <Button variant="primary" size="sm" className="mt-2" loading={googleBusy} onClick={connectGoogle}><Plug /> Connect Google</Button>
+                  )}
+                  {e.key === "google_drive" && googleConnected && (
+                    <Button variant="ghost" size="sm" className="mt-1 -ml-2" onClick={disconnectGoogle}><Unplug /> Disconnect</Button>
+                  )}
                 </div>
-                <Badge tone={state === "ok" ? "success" : state === "error" ? "danger" : "neutral"}>{state === "ok" ? "Available" : state === "error" ? "Configured · failing" : state === "off" ? "Not configured" : "Unknown"}</Badge>
+                <Badge tone={state === "ok" ? "success" : state === "error" ? "danger" : state === "action" ? "warning" : "neutral"}>{state === "ok" ? "Available" : state === "error" ? "Configured · failing" : state === "action" ? "Needs connection" : state === "off" ? "Not configured" : "Unknown"}</Badge>
               </li>
             );
           })}

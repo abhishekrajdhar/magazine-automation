@@ -32,8 +32,9 @@ from app.services.transcription import (
 log = logging.getLogger("pressflow.pipeline")
 
 UNAVAILABLE_YT = ("YouTube captions could not be obtained by permitted means ({reason}). Captions are only downloaded "
-                  "through the YouTube Data API by the account that owns the video. Please provide the original "
-                  "recording (upload it or add it from Google Drive) for Whisper transcription.")
+                  "through the YouTube Data API by the account that owns the video. Connect that account in Settings → "
+                  "Integrations (for a Brand Account channel, choose the channel when Google asks), or provide the "
+                  "original recording (upload it or add it from Google Drive) for Whisper transcription.")
 
 
 def _update(video_id: str, **values) -> None:
@@ -276,11 +277,11 @@ def _acquire_youtube_download(ctx, video_id, org_id, project_id, url) -> str:
     s = get_settings()
     reason = ctx.payload.get("_captions_reason") or "captions unavailable"
     if not s.youtube_allow_download:
-        msg = UNAVAILABLE_YT.format(reason=reason)
+        msg = UNAVAILABLE_YT.format(reason=reason.rstrip("."))
         _update(video_id, processing_state="unavailable", processing_message=msg, transcription_state="unavailable")
         raise PermanentError(msg)
     if not which(s.yt_dlp_path):
-        msg = UNAVAILABLE_YT.format(reason=f"{reason}; YOUTUBE_ALLOW_DOWNLOAD is on but yt-dlp is not installed")
+        msg = UNAVAILABLE_YT.format(reason=f"{reason.rstrip('.')}; YOUTUBE_ALLOW_DOWNLOAD is on but yt-dlp is not installed")
         _update(video_id, processing_state="unavailable", processing_message=msg, transcription_state="unavailable")
         raise PermanentError(msg)
     _state(ctx, video_id, "acquiring", 5, "Downloading audio with yt-dlp (organisation-owned media only)")

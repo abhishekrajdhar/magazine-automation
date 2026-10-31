@@ -55,7 +55,8 @@ export const live = {
   },
   processVideo: (videoId: string) => apiFetch<JobRef>(`/videos/${videoId}/process`, { method: "POST" }),
 
-  googleAuthorize: () => apiFetch<{ url: string }>("/integrations/google/authorize"),
+  googleAuthorize: () => apiFetch<{ authorizeUrl: string }>("/integrations/google/authorize"),
+  googleDisconnect: () => apiFetch<{ message: string }>("/integrations/google", { method: "DELETE" }),
 
   listReferences: () => apiFetch<ReferenceMagazine[]>("/references"),
   listTemplates: () => apiFetch<Template[]>("/templates"),
@@ -79,6 +80,7 @@ export const live = {
   deriveTemplate: (referenceId: string, pageNumber: number) => apiFetch<Template>("/templates/derive", { method: "POST", json: { referenceId, pageNumber } }),
 
   generateArticles: (projectId: string, types: string[], sessionIds: string[]) => apiFetch<JobRef>(`/projects/${projectId}/articles/generate`, { method: "POST", json: { types, sessionIds } }),
+  generationJobs: (projectId: string) => apiFetch<Job[]>(`/projects/${projectId}/articles/jobs`),
   patchArticle: (id: string, patch: Partial<Article>) => apiFetch<Article>(`/articles/${id}`, { method: "PATCH", json: patch }),
   article: (id: string) => apiFetch<Article>(`/articles/${id}`),
   /** Returns suggestions only; nothing is applied server-side. */

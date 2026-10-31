@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CircleAlert, CircleCheck, FileText, NotebookPen, Search, Sparkles } from "lucide-react";
+import { ArrowRight, CircleAlert, CircleCheck, FileText, Info, NotebookPen, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/store/workspace";
 import { useProjectData } from "@/lib/store/hooks";
@@ -13,11 +13,13 @@ import { Badge, EmptyState, PageHeader, Panel, SimulatedBadge, Table, Td, Th } f
 import { Dialog, DialogContent, Select } from "@/components/ui/overlays";
 import { Checkbox, Segmented, Tooltip } from "@/components/ui/primitives";
 import { articleStatus, articleTypeLabel } from "@/lib/domain/status";
-import type { ArticleStatus, ArticleType } from "@/lib/domain/types";
+import type { ArticleStatus, ArticleType, EventSession, ExtractedFact } from "@/lib/domain/types";
+import { generationBlocker } from "@/lib/editorial/generation";
 import { claimSummary, verifyArticle } from "@/lib/editorial/verify";
 import { useApiStatus, integration } from "@/lib/api/use-api-status";
 import { live } from "@/lib/api/live";
 import { formatRelative, wordCount } from "@/lib/utils/format";
+import { GenerationStatus, useGenerationJobs } from "./generation-status";
 
 type View = "all" | "pending" | "draft" | "approved" | "rejected";
 
@@ -25,7 +27,7 @@ function Studio() {
   const router = useRouter();
   const params = useSearchParams();
   const data = useProjectData();
-  const { project, articles, segments, pages, sessions } = data;
+  const { project, articles, segments, pages, sessions, facts } = data;
   const mode = useWorkspace((s) => s.mode);
   const api = useApiStatus();
   const [view, setView] = React.useState<View>(params.get("status") === "pending" ? "pending" : "all");
@@ -39,6 +41,7 @@ function Studio() {
   const list = articles.filter((a) => matchesView(a.status) && (type === "all" || a.type === type) && (!query || `${a.headline} ${a.subheadline}`.toLowerCase().includes(query.toLowerCase())));
   const count = (v: View) => articles.filter((a) => (v === "all" ? true : v === "pending" ? a.status === "in_review" || a.status === "needs_revision" : a.status === v)).length;
   const llm = integration(api.integrations, "llm");
+  const generation = useGenerationJobs(project?.id, mode === "live" && api.online);
 
   if (!project) return null;
 
@@ -53,6 +56,8 @@ function Studio() {
           </Button>
         }
       />
+
+      <GenerationStatus jobs={generation.visible} onDismiss={generation.dismiss} />
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <Segmented
@@ -148,13 +153,15 @@ function Studio() {
         open={generating}
         onOpenChange={setGenerating}
         sessions={sessions}
+        facts={facts}
         llmConfigured={mode === "live" && api.online && !!llm?.available}
         llmDetail={!api.online ? "The PressFlow API isn't connected." : llm?.detail ?? "No LLM provider is configured on the API."}
         onGenerate={async (types, sessionIds) => {
           try {
             await live.generateArticles(project.id, types, sessionIds);
-            toast.success("Generation queued", { description: "Drafts appear here as they finish. Each needs editorial approval." });
+            toast.success("Generation started", { description: "Progress shows at the top of Content Studio. Each draft needs editorial approval." });
             setGenerating(false);
+            void generation.refresh();
           } catch (err) {
             toast.error((err as Error).message);
           }
@@ -164,10 +171,21 @@ function Studio() {
   );
 }
 
-function GenerateDialog({ open, onOpenChange, sessions, llmConfigured, llmDetail, onGenerate }: { open: boolean; onOpenChange: (o: boolean) => void; sessions: { id: string; title: string; status: string }[]; llmConfigured: boolean; llmDetail: string; onGenerate: (types: string[], sessions: string[]) => void }) {
+interface GenerateDialogProps {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  sessions: EventSession[];
+  facts: ExtractedFact[];
+  llmConfigured: boolean;
+  llmDetail: string;
+  onGenerate: (types: string[], sessions: string[]) => void;
+}
+
+function GenerateDialog({ open, onOpenChange, sessions, facts, llmConfigured, llmDetail, onGenerate }: GenerateDialogProps) {
   const [types, setTypes] = React.useState<ArticleType[]>(["event_report", "panel", "interview"]);
   const [picked, setPicked] = React.useState<string[]>([]);
   React.useEffect(() => setPicked(sessions.filter((s) => s.status === "approved").map((s) => s.id)), [sessions]);
+  const blocker = llmConfigured ? generationBlocker({ sessions, facts, pickedSessionIds: picked, typeCount: types.length }) : null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -179,7 +197,7 @@ function GenerateDialog({ open, onOpenChange, sessions, llmConfigured, llmDetail
             <Button variant="secondary" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button variant="primary" disabled={!llmConfigured || !types.length || !picked.length} onClick={() => onGenerate(types, picked)}>
+            <Button variant="primary" disabled={!llmConfigured || !!blocker} title={blocker?.title} onClick={() => onGenerate(types, picked)}>
               <Sparkles /> Generate {types.length} type{types.length === 1 ? "" : "s"}
             </Button>
           </>
@@ -193,6 +211,22 @@ function GenerateDialog({ open, onOpenChange, sessions, llmConfigured, llmDetail
               <p className="mt-0.5 text-[13px]">
                 {llmDetail} Configure an LLM provider on the API (see <Link href="/app/settings?tab=integrations" className="underline">Settings → Integrations</Link>). The demo workspace includes 18 pre-written drafts so you can explore editing and approval.
               </p>
+            </div>
+          </div>
+        )}
+        {blocker && (
+          <div className="mb-4 flex items-start gap-2.5 rounded-md border border-accent-line bg-accent-soft px-3 py-2.5 text-sm text-accent-ink">
+            <Info className="mt-0.5 size-4 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium">{blocker.title}</p>
+              <p className="mt-0.5 text-[13px] text-ink-2">{blocker.body}</p>
+              {blocker.href && (
+                <Button variant="secondary" size="xs" className="mt-2" asChild>
+                  <Link href={blocker.href} onClick={() => onOpenChange(false)}>
+                    {blocker.cta} <ArrowRight />
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -220,7 +254,7 @@ function GenerateDialog({ open, onOpenChange, sessions, llmConfigured, llmDetail
                   </span>
                 </label>
               ))}
-              {sessions.length === 0 && <p className="text-sm text-ink-3">No analysed sessions yet.</p>}
+              {sessions.length === 0 && <p className="text-sm text-ink-3">No analysed sessions yet — they appear here once a recording is processed.</p>}
             </div>
           </div>
         </div>

@@ -30,9 +30,9 @@ def _cached(key: str, ttl: float, fn) -> tuple[bool, str]:
     return val
 
 
-def _item(key, label, configured, available, detail, hint) -> dict:
+def _item(key, label, configured, available, detail, hint, action: str | None = None) -> dict:
     return {"key": key, "label": label, "configured": bool(configured), "available": bool(available and configured),
-            "detail": detail, "docsHint": hint}
+            "detail": detail, "docsHint": hint, "action": action}
 
 
 def _net_disabled() -> tuple[bool, str]:
@@ -67,7 +67,7 @@ def status_list(db: Session, org_id: str) -> list[dict]:
     else:
         avail, adetail = False, cdetail
     out.append(_item("llm", f"AI writing ({llm.name})", configured, avail, adetail if configured else cdetail,
-                     "LLM_PROVIDER=anthropic + ANTHROPIC_API_KEY (default model claude-opus-5-5), or openai_compatible."))
+                     "OPENAI_API_KEY or ANTHROPIC_API_KEY (LLM_PROVIDER=auto prefers OpenAI when both are set)."))
 
     # transcription
     tr = get_transcriber()
@@ -99,12 +99,15 @@ def status_list(db: Session, org_id: str) -> list[dict]:
     else:
         cdet = "Not configured: set YOUTUBE_API_KEY and/or Google OAuth credentials."
     cap_avail = bool(tok)
+    key_ok = True
     if s.youtube_api_key and not tok and s.integration_network_checks:
-        ok_k, kdet = _cached("ytkey", 600, _check_youtube_key)
+        key_ok, kdet = _cached("ytkey", 600, _check_youtube_key)
         cdet = f"{cdet} API key check: {kdet}"
+    # Not connected yet is a step to take, not a failure, unless the key itself is rejected.
+    cap_action = "connect_google" if s.google_configured and not tok and key_ok else None
     out.append(_item("youtube_captions", "YouTube captions (Data API)", cap_conf, cap_avail, cdet,
                      "Captions are only downloaded via captions.download by the owning account. Otherwise upload the "
-                     "original recording for Whisper transcription."))
+                     "original recording for Whisper transcription.", cap_action))
 
     # google drive
     drive_tok = google.token_row(db, org_id, scope="drive") if s.google_configured else None
@@ -117,7 +120,8 @@ def status_list(db: Session, org_id: str) -> list[dict]:
     else:
         gdet = "OAuth client configured; no Google account connected for this organisation yet."
     out.append(_item("google_drive", "Google Drive", s.google_configured, bool(drive_tok), gdet,
-                     "Create an OAuth web client; redirect URI /api/v1/integrations/google/callback."))
+                     "Create an OAuth web client; redirect URI /api/v1/integrations/google/callback.",
+                     "connect_google" if s.google_configured and not drive_tok else None))
 
     # ffmpeg
     ff = which(s.ffmpeg_path)

@@ -81,6 +81,6 @@ class NoneProvider(LLMProvider):
 
     def complete_json(self, **_: Any) -> dict[str, Any]:
         raise LLMNotConfigured(
-            "AI features are unavailable: no LLM provider is configured. Set LLM_PROVIDER=anthropic and "
-            "ANTHROPIC_API_KEY (or LLM_PROVIDER=openai_compatible with OPENAI_API_KEY/OPENAI_BASE_URL)."
+            "AI features are unavailable: no LLM provider is configured. Set OPENAI_API_KEY or "
+            "ANTHROPIC_API_KEY in services/api/.env (LLM_PROVIDER=auto picks whichever is set)."
         )
