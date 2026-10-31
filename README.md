@@ -112,17 +112,6 @@ docs/                  architecture, api, indesign, deployment, testing
 - **Honest integrations.** Missing providers are reported as missing. A native `.indd` is never claimed unless InDesign produced it.
 - **Credentials stay server-side.** The browser only calls same-origin `/api/v1`; Next.js proxies it to the API.
 
-## Note for this machine
+## Keep the repository out of iCloud
 
-`~/Documents` is synced by iCloud with "Optimize Mac Storage", and the disk is about 97% full. macOS has been evicting project files, which made installs, type checks and dev compiles stall. As a workaround, heavy generated folders live in `*.nosync` directories, which iCloud ignores, behind symlinks: `apps/web/node_modules`, `apps/web/.next`, `services/api/.venv` and `services/api/var`.
-
-`npm install` replaces the `node_modules` symlink with a real folder. After installing, run:
-
-```bash
-cd apps/web
-rm -rf node_modules.nosync
-mv node_modules node_modules.nosync
-ln -s node_modules.nosync node_modules
-```
-
-Moving the repository out of `~/Documents`, for example to `~/Developer`, or freeing disk space avoids all of this.
+Don't keep this repository in an iCloud-synced folder such as `~/Documents` or `~/Desktop` when "Optimize Mac Storage" is on. macOS evicts files to the cloud on a nearly full disk, and installs, builds, tests and even git then stall with "Operation timed out". The project lives in `~/Developer/magazine` for this reason.
