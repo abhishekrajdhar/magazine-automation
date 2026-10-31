@@ -42,6 +42,15 @@ class LayoutBlock(CamelModel):
     font_size: float | None = None
     color: str | None = None
     sample: str | None = None
+    # Set by vision detection on pages that are one flattened image (e.g. covers):
+    # masthead | logo | tagline | issue_line | headline | deck | cover_line | band
+    cover_role: str | None = None
+    align: Literal["left", "center", "right"] | None = None
+    weight: int | None = None
+    uppercase: bool | None = None
+    fill: str | None = None
+    description: str | None = None
+    source: Literal["pdf", "vision"] | None = None
 
 
 class PageProperties(CamelModel):
@@ -184,6 +193,14 @@ class TemplateSlot(CamelModel):
     w: float
     h: float
     columns: int | None = None
+    # Hints carried from a reconstructed reference page (all optional).
+    name: str | None = None
+    fixed_text: str | None = None
+    style: dict | None = None  # size, leading, weight, uppercase, tracking, color, align
+    fill: str | None = None  # hex, for shapes
+    opacity: float | None = None
+    asset_tag: str | None = None  # image slot showing the project asset that carries this tag (logos)
+    bleed: dict[str, bool] | None = None  # trim edges this frame extends past
 
 
 class Template(CamelModel):

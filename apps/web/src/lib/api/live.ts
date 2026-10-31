@@ -6,6 +6,7 @@
  */
 import type {
   Article,
+  Asset,
   DesignProfile,
   ExportFormat,
   ExportRecord,
@@ -19,6 +20,8 @@ import type {
   VideoSource,
 } from "@/lib/domain/types";
 import { apiFetch, apiUpload } from "./client";
+
+export type ImageAspect = "portrait" | "landscape" | "square";
 
 export interface JobRef {
   jobId: string;
@@ -54,6 +57,16 @@ export const live = {
     return apiUpload<VideoSource>(`/projects/${projectId}/videos/upload`, form, onProgress);
   },
   processVideo: (videoId: string) => apiFetch<JobRef>(`/videos/${videoId}/process`, { method: "POST" }),
+
+  uploadAsset: (projectId: string, file: File, onProgress?: (f: number) => void) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kind", "photo");
+    return apiUpload<Asset>(`/projects/${projectId}/assets`, form, onProgress);
+  },
+  generateImage: (projectId: string, body: { prompt: string; aspect: ImageAspect; sessionId?: string }) => apiFetch<Asset>(`/projects/${projectId}/assets/generate`, { method: "POST", json: body }),
+
+  templateLogos: (projectId: string, templateId: string) => apiFetch<Asset[]>(`/projects/${projectId}/templates/${templateId}/logos`, { method: "POST" }),
 
   googleAuthorize: () => apiFetch<{ authorizeUrl: string }>("/integrations/google/authorize"),
   googleDisconnect: () => apiFetch<{ message: string }>("/integrations/google", { method: "DELETE" }),

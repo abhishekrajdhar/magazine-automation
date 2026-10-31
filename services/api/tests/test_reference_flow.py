@@ -186,3 +186,14 @@ def test_llm_features_return_503_when_unconfigured(client, owner):
     assert a.status_code == 503
     v = client.post(f"/api/v1/articles/{art['id']}/verify", headers=h)  # deterministic: works without an LLM
     assert v.status_code == 200 and v.json()["engine"] == "deterministic"
+
+
+def test_project_created_during_analysis_gets_the_profile(client, owner):
+    """A project pointed at a reference that is still analysing is linked to its profile once analysis finishes."""
+    h = owner["headers"]
+    ref = _upload_reference(client, h)["reference"]
+    proj = client.post("/api/v1/projects", headers=h, json={"title": "Early", "referenceId": ref["id"]}).json()
+    assert proj["referenceId"] == ref["id"] and not proj.get("designProfileId")
+    run_jobs()
+    profile_id = client.get(f"/api/v1/references/{ref['id']}", headers=h).json()["designProfileId"]
+    assert client.get(f"/api/v1/projects/{proj['id']}", headers=h).json()["designProfileId"] == profile_id

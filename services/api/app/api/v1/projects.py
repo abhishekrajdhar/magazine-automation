@@ -29,10 +29,11 @@ from app.models import (
     VideoSource,
 )
 from app.schemas.base import OkResponse
-from app.schemas.pages import ActivityItem, Asset as AssetSchema, AssetUpdate
+from app.schemas.pages import ActivityItem, Asset as AssetSchema, AssetUpdate, GenerateImageRequest
 from app.schemas.project import Project as ProjectSchema
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.schemas.workspace import ProjectWorkspace
+from app.services import images
 from app.services import serializers as ser
 from app.services.activity import record_activity
 from app.services.project_defaults import default_config
@@ -204,6 +205,31 @@ async def upload_asset(project_id: str, ctx: CurrentAuth, db: DB, file: UploadFi
         return ser.asset(a)
     finally:
         Path(tmp).unlink(missing_ok=True)
+
+
+@router.post("/projects/{project_id}/assets/generate", response_model=AssetSchema, status_code=201)
+def generate_asset(project_id: str, body: GenerateImageRequest, ctx: CurrentAuth, db: DB) -> AssetSchema:
+    """Generates an image with the configured AI image model and stores it as a photo asset labelled AI-generated."""
+    if not (ctx.can("content.write") or ctx.can("design.write")):
+        ensure(ctx, "content.write")
+    p = get_project(db, ctx, project_id)
+    try:
+        png, w, h = images.generate(body.prompt, body.aspect)
+    except images.ImageGenError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    s = get_settings()
+    aid = new_id("ast")
+    key = f"assets/{ctx.org_id}/{p.id}/{aid}.png"
+    get_storage().put_bytes(key, png, "image/png")
+    a = Asset(id=aid, org_id=ctx.org_id, project_id=p.id, kind="photo", file_name=f"ai-{aid[-8:]}.png",
+              content_type="image/png", size_bytes=len(png), width_px=w, height_px=h, session_id=body.session_id,
+              tags=[images.AI_TAG], caption=body.caption, credit=f"AI-generated image ({s.image_model})",
+              seed=int(hashlib.sha256(aid.encode()).hexdigest()[:8], 16), storage_key=key, simulated=False)
+    db.add(a)
+    record_activity(db, org_id=ctx.org_id, actor_id=ctx.user_id, verb="generated an AI image", target=p.title,
+                    kind="project", project_id=p.id)
+    db.commit()
+    return ser.asset(a)
 
 
 @router.patch("/assets/{asset_id}", response_model=AssetSchema)

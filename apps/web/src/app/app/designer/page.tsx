@@ -21,6 +21,7 @@ import type { DesignStatus, MagazinePage, PageType } from "@/lib/domain/types";
 import { pageTypeLabel } from "@/lib/templates/derive";
 import { specsForPageType, templateSpecs } from "@/lib/templates/specs";
 import { recommendFlatplan, type Recommendation } from "@/lib/planner/recommend";
+import { live } from "@/lib/api/live";
 import { cn } from "@/lib/utils/cn";
 
 const PAGE_TYPES: PageType[] = ["cover", "toc", "editorial", "event_report", "two_column_article", "interview", "photo_gallery", "speaker_profile", "infographic", "full_page_image", "advertisement"];
@@ -139,7 +140,7 @@ export default function FlatplanPage() {
           <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
             <FilePlus2 /> Add page
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => setRecommendation(recommendFlatplan(project, articles, profile, adIds, pages))}>
+          <Button variant="secondary" size="sm" onClick={() => setRecommendation(recommendFlatplan(project, articles, profile, adIds, pages, templates))}>
             <Sparkles /> Recommend sequence
           </Button>
           <Button variant="primary" size="sm" asChild>
@@ -154,7 +155,7 @@ export default function FlatplanPage() {
         <div className="canvas-backdrop scroll-thin min-h-0 flex-1 overflow-y-auto p-6" onClick={() => setSelected(null)}>
           {pages.length === 0 ? (
             <Panel className="mx-auto max-w-lg">
-              <EmptyState icon={<PanelsTopLeft />} title="The flatplan is empty" description="Generate a recommended sequence from your approved articles, or add pages one by one." action={<Button variant="primary" onClick={(e) => { e.stopPropagation(); setRecommendation(recommendFlatplan(project, articles, profile, adIds, pages)); }}><Sparkles /> Recommend sequence</Button>} />
+              <EmptyState icon={<PanelsTopLeft />} title="The flatplan is empty" description="Generate a recommended sequence from your approved articles, or add pages one by one." action={<Button variant="primary" onClick={(e) => { e.stopPropagation(); setRecommendation(recommendFlatplan(project, articles, profile, adIds, pages, templates)); }}><Sparkles /> Recommend sequence</Button>} />
             </Panel>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => setActiveDrag(String(e.active.id))} onDragEnd={onDragEnd} onDragCancel={() => setActiveDrag(null)}>
@@ -310,6 +311,16 @@ export default function FlatplanPage() {
                   variant="primary"
                   onClick={async () => {
                     if (pages.some((p) => p.locked) && !(await confirm({ title: "Replace the flatplan?", description: `${counts.locked} locked pages will be replaced too. You can undo this from the toolbar.`, confirmLabel: "Replace", tone: "danger" }))) return;
+                    // A cover rebuilt from the reference shows logo artwork cropped from it; make sure the crops exist.
+                    const coverTpl = templates.find((t) => t.id === recommendation.plan.find((e) => e.pageType === "cover")?.templateId);
+                    if (useWorkspace.getState().mode === "live" && coverTpl?.slots.some((s) => s.assetTag)) {
+                      try {
+                        const logos = await live.templateLogos(project.id, coverTpl.id);
+                        useWorkspace.setState((s) => ({ assets: [...logos, ...s.assets.filter((a) => !logos.some((l) => l.id === a.id))] }));
+                      } catch (err) {
+                        toast.error("Cover logos couldn't be prepared", { description: (err as Error).message });
+                      }
+                    }
                     regeneratePages(project.id, recommendation.plan);
                     setRecommendation(null);
                     toast.success(`Flatplan rebuilt with ${recommendation.plan.length} pages`, { action: { label: "Undo", onClick: () => undo(project.id) } });

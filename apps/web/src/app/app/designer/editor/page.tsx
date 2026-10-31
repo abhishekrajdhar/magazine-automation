@@ -19,10 +19,11 @@ import { PageThumb } from "@/components/magazine/page-thumb";
 import { PageView } from "@/components/magazine/page-view";
 import { TemplatePreview } from "@/components/designer/template-preview";
 import { designStatus } from "@/lib/domain/status";
-import type { DesignStatus, PageElement } from "@/lib/domain/types";
+import type { Asset, DesignStatus, PageElement } from "@/lib/domain/types";
 import { specsForPageType } from "@/lib/templates/specs";
 import { pageTypeLabel } from "@/lib/templates/derive";
 import { live } from "@/lib/api/live";
+import { AddImages, aspectFor } from "@/components/media/add-images";
 import { useApiStatus } from "@/lib/api/use-api-status";
 import { uid } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
@@ -176,6 +177,25 @@ function Editor() {
   };
   const oversetCount = Object.values(overset).filter(Boolean).length;
   const article = data.articles.find((a) => a.id === page.articleId);
+  // Starting points for "Generate with AI": described from the page's article, shaped like the selected frame.
+  const imagePrompt = article
+    ? `Editorial photograph for a magazine article titled "${article.headline.replace(/[“”"]/g, "")}". ${(article.intro ?? "").slice(0, 300)}`
+    : page.pageType === "cover"
+      ? `Striking cover image for "${data.project?.title ?? "the magazine"}", about ${data.project?.eventName ?? "the event"}. Leave calm space in the upper third for the masthead and cover lines.`
+      : "";
+  const imageAspect = selected?.kind === "image" ? aspectFor(selected.w, selected.h) : page.pageType === "cover" || page.pageType === "full_page_image" ? "portrait" : "landscape";
+  const placeAsset = (a: Asset) => {
+    if (selected?.kind === "image" && !selected.locked) {
+      updateElement(page.id, selected.id, { assetId: a.id, crop: { scale: 1, offsetX: 0, offsetY: 0 } });
+      toast.success("Image replaced");
+    } else {
+      const w = profile.page.widthPt / 3;
+      const el: PageElement = { id: uid("el"), kind: "image", role: "image", name: "Image", x: (profile.page.widthPt - w) / 2, y: profile.page.heightPt / 3, w, h: w * 0.66, z: Math.max(0, ...page.elements.map((e) => e.z)) + 1, assetId: a.id, crop: { scale: 1, offsetX: 0, offsetY: 0 } };
+      addElement(page.id, el);
+      setSelectedId(el.id);
+      toast.success("Image placed — drag to position");
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -293,22 +313,10 @@ function Editor() {
               </div>
             </TabsContent>
             <TabsContent value="assets" className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3">
-              <AssetPicker
-                assets={data.assets}
-                sessionHint={article?.sessionIds}
-                onPick={(a) => {
-                  if (selected?.kind === "image" && !selected.locked) {
-                    updateElement(page.id, selected.id, { assetId: a.id, crop: { scale: 1, offsetX: 0, offsetY: 0 } });
-                    toast.success("Image replaced");
-                  } else {
-                    const w = profile.page.widthPt / 3;
-                    const el: PageElement = { id: uid("el"), kind: "image", role: "image", name: "Image", x: (profile.page.widthPt - w) / 2, y: profile.page.heightPt / 3, w, h: w * 0.66, z: Math.max(0, ...page.elements.map((e) => e.z)) + 1, assetId: a.id, crop: { scale: 1, offsetX: 0, offsetY: 0 } };
-                    addElement(page.id, el);
-                    setSelectedId(el.id);
-                    toast.success("Image placed — drag to position");
-                  }
-                }}
-              />
+              <div className="mb-3">
+                <AddImages projectId={page.projectId} size="xs" defaultPrompt={imagePrompt} defaultAspect={imageAspect} sessionId={article?.sessionIds?.[0]} onAdded={placeAsset} />
+              </div>
+              <AssetPicker assets={data.assets} sessionHint={article?.sessionIds} onPick={placeAsset} />
             </TabsContent>
           </Tabs>
         </aside>
@@ -420,6 +428,18 @@ function Editor() {
 
       <Dialog open={picker !== null} onOpenChange={(o) => !o && setPicker(null)}>
         <DialogContent title="Choose a photograph" size="lg">
+          <div className="mb-3">
+            <AddImages
+              projectId={page.projectId}
+              defaultPrompt={imagePrompt}
+              defaultAspect={imageAspect}
+              sessionId={article?.sessionIds?.[0]}
+              onAdded={(a) => {
+                if (selected) change(selected.id, { assetId: a.id, crop: { scale: 1, offsetX: 0, offsetY: 0 } }, true);
+                setPicker(null);
+              }}
+            />
+          </div>
           <AssetPicker
             assets={data.assets}
             sessionHint={article?.sessionIds}

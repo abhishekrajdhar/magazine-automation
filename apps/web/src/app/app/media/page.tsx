@@ -159,7 +159,7 @@ function MediaLibrary() {
           <KnowledgeSearch data={data} />
         </TabsContent>
         <TabsContent value="photos" className="pt-5">
-          <PhotoLibrary assets={assets} sessions={data.sessions} />
+          <PhotoLibrary projectId={project.id} assets={assets} sessions={data.sessions} />
         </TabsContent>
       </Tabs>
 

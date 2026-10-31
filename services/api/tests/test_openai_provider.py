@@ -64,3 +64,17 @@ def test_other_400s_are_not_retried(monkeypatch):
     with pytest.raises(openai_compatible.LLMError, match="HTTP 400"):
         _provider("https://api.openai.com/v1").complete_json(system="s", prompt="p", schema=SCHEMA)
     assert len(bodies) == 1
+
+
+def test_empty_balance_is_reported_and_not_retried(monkeypatch):
+    _capture(monkeypatch, [(429, {"error": {"code": "credit_balance_exhausted", "message": "You have no credits remaining."}})])
+    with pytest.raises(openai_compatible.LLMError, match="no credits left") as e:
+        _provider("https://api.openai.com/v1").complete_json(system="s", prompt="p", schema=SCHEMA)
+    assert e.value.retryable is False
+
+
+def test_rate_limit_is_retryable_and_explains_itself(monkeypatch):
+    _capture(monkeypatch, [(429, {"error": {"code": "rate_limit_exceeded", "message": "Rate limit reached for requests"}})])
+    with pytest.raises(openai_compatible.LLMError, match="Rate limit reached") as e:
+        _provider("https://api.openai.com/v1").complete_json(system="s", prompt="p", schema=SCHEMA)
+    assert e.value.retryable is True

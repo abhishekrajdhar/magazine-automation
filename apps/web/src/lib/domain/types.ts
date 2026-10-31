@@ -356,6 +356,14 @@ export interface LayoutBlock {
   fontSize?: number;
   color?: string;
   sample?: string;
+  /** Set by vision detection on pages stored as one flattened picture (e.g. covers). */
+  coverRole?: "masthead" | "logo" | "tagline" | "issue_line" | "headline" | "deck" | "cover_line" | "band";
+  align?: "left" | "center" | "right";
+  weight?: number;
+  uppercase?: boolean;
+  fill?: string;
+  description?: string;
+  source?: "pdf" | "vision";
 }
 
 export interface ReferencePage {
@@ -462,6 +470,17 @@ export interface TemplateSlot {
   w: number;
   h: number;
   columns?: number;
+  /* Hints carried from a reconstructed reference page (all optional). */
+  name?: string;
+  fixedText?: string;
+  style?: PageElement["style"];
+  /** Hex fill for shapes. */
+  fill?: string;
+  opacity?: number;
+  /** Image slot showing the project asset that carries this tag (logos cropped from the reference). */
+  assetTag?: string;
+  /** Trim edges this frame extends past. */
+  bleed?: { top?: boolean; bottom?: boolean; left?: boolean; right?: boolean };
 }
 
 export interface Template {

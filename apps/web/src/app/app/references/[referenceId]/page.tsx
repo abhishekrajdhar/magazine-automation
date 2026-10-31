@@ -15,10 +15,10 @@ import { ROLE_COLORS } from "@/components/reference/reference-structure";
 import { ProfileEditor } from "@/components/reference/profile-editor";
 import { PageView } from "@/components/magazine/page-view";
 import { deriveTemplate, pageTypeLabel } from "@/lib/templates/derive";
-import { composeMagazine } from "@/lib/templates/compose";
+import { composeMagazine, isTextRole } from "@/lib/templates/compose";
 import { assetMap, buildToc, renderContext } from "@/lib/magazine/context";
 import { referenceStatus } from "@/lib/domain/status";
-import type { PageType, ReferencePage } from "@/lib/domain/types";
+import type { PageType, ReferencePage, Template } from "@/lib/domain/types";
 import { useApiStatus } from "@/lib/api/use-api-status";
 import { live } from "@/lib/api/live";
 import { cn } from "@/lib/utils/cn";
@@ -62,10 +62,30 @@ export default function ReferenceDetailPage() {
   const usedBy = projects.filter((p) => p.referenceId === reference.id || (profile && p.designProfileId === profile.id));
   const derived = templates.filter((t) => t.id.startsWith(`tpl_ref_${reference.id}_`));
 
-  const derive = (page: ReferencePage) => {
-    const t = deriveTemplate(page, reference.title);
+  const derive = async (page: ReferencePage) => {
+    let t: Template;
+    if (mode === "live") {
+      // Saved on the API, so it survives the next workspace reload and is available to every project.
+      try {
+        t = await live.deriveTemplate(reference.id, page.pageNumber);
+      } catch (err) {
+        toast.error(`Couldn't reconstruct p.${page.pageNumber}`, { description: (err as Error).message });
+        return;
+      }
+    } else {
+      t = deriveTemplate(page, reference.title);
+    }
     addTemplate(t);
-    toast.success(`Template reconstructed from p.${page.pageNumber}`, { description: `${t.slots.length} frames · ${t.columns}-column text`, action: { label: "View templates", onClick: () => router.push("/app/templates") } });
+    const view = { label: "View templates", onClick: () => router.push("/app/templates") };
+    if (!t.slots.some((s) => isTextRole(s.role))) {
+      toast.warning(`p.${page.pageNumber} became an image-only template`, {
+        description: `This page is stored in the PDF as one flattened picture, so there's no live text to turn into headline or body frames, and article copy can't flow into it. Reconstruct a page with live text, or use the built-in ${pageTypeLabel(t.pageType)} template, which places your project's own title, cover lines and image.`,
+        duration: 12000,
+        action: view,
+      });
+      return;
+    }
+    toast.success(`Template reconstructed from p.${page.pageNumber}`, { description: `${t.slots.length} frames · ${t.columns}-column text`, action: view });
   };
 
   return (
@@ -292,7 +312,7 @@ function PageInspector({ page, pdfUrl, onClose, onDerive, onNavigate, apiLive }:
   if (!page || !current) return <Dialog open={false} />;
 
   const byRole = current.blocks.reduce<Record<string, number>>((acc, b) => {
-    const r = b.role ?? b.kind;
+    const r = b.coverRole ?? b.role ?? b.kind;
     acc[r] = (acc[r] ?? 0) + 1;
     return acc;
   }, {});

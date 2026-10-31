@@ -43,7 +43,7 @@ def derive(body: DeriveTemplateRequest, response: Response, db: DB, ctx=require(
     if page is None:
         raise HTTPException(status_code=404, detail="That page has not been analysed yet.")
     existed = db.get(Template, ref_template_id(ref.id, body.page_number)) is not None
-    row = ensure_reference_template(db, ctx.org_id, ref.id, body.page_number)
+    row = ensure_reference_template(db, ctx.org_id, ref.id, body.page_number, refresh=True)
     if row is None or not row.slots:
         raise HTTPException(status_code=422, detail="No layout blocks on this page to derive a template from.")
     if body.name:

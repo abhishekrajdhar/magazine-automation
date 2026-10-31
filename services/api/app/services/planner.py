@@ -58,6 +58,19 @@ def article_entries(a: dict, page_type: str, profile: dict, has_images: bool) ->
     return out
 
 
+def cover_template(project: dict, existing_pages: list[dict], reference_templates: dict[str, dict] | None) -> str:
+    """The cover rebuilt from this project's reference (live masthead/headline frames) when there is one, else the
+    built-in full-bleed cover. A cover already on the flatplan keeps its template."""
+    current = next((p.get("templateId") for p in existing_pages if p.get("pageType") == "cover"), None)
+    if current:
+        return current
+    prefix = f"tpl_ref_{project.get('referenceId')}_p"
+    for tid, t in sorted((reference_templates or {}).items()):
+        if tid.startswith(prefix) and t.get("pageType") == "cover" and any(s.get("id") == "headline" for s in t.get("slots") or []):
+            return tid
+    return "tpl_cover_fullbleed"
+
+
 def recommend(project: dict, config: dict, articles: list[dict], assets: list[dict], profile: dict,
               existing_pages: list[dict], target: int | None = None, speakers: list[dict] | None = None,
               facts: list[dict] | None = None, reference_templates: dict[str, dict] | None = None
@@ -89,7 +102,11 @@ def recommend(project: dict, config: dict, articles: list[dict], assets: list[di
         rationale.append("Reference page mix: " + ", ".join(f"{k} ×{v}" for k, v in sorted(ref_counts.items())) +
                          f"; keynotes/panels use the reference's dominant article layout ({discussion_type}).")
 
-    front: list[PlanEntry] = [PlanEntry("cover", "tpl_cover_fullbleed", "Cover")]
+    old_cover = next((p for p in existing_pages if p.get("pageType") == "cover"), None)
+    cover_image = [e["assetId"] for e in (old_cover or {}).get("elements") or []
+                   if e.get("role") == "hero_image" and e.get("assetId")][:1]
+    front: list[PlanEntry] = [PlanEntry("cover", cover_template(project, existing_pages, reference_templates), "Cover",
+                                        image_ids=cover_image or None)]
     if ad_budget:
         front.append(ad_entry("Advertisement (inside front cover)"))
         ad_budget -= 1

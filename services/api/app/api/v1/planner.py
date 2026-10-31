@@ -14,7 +14,8 @@ from app.services import planner
 from app.services import serializers as ser
 from app.services.activity import record_activity
 from app.services.project_context import assets_by_id, dump, pages_dicts, profile_for_project
-from app.services.template_store import reference_templates, template_exists
+from app.schemas.pages import Asset as AssetSchema
+from app.services.template_store import ensure_reference_logos, reference_templates, template_exists
 
 from .common import PFRoute, get_project
 
@@ -85,12 +86,28 @@ def recommend(project_id: str, db: DB, body: PlanRecommendRequest | None = None,
                                                         .order_by(Article.created_at))]
     speakers = [dump(ser.speaker(s)) for s in db.scalars(select(Speaker).where(Speaker.project_id == p.id))]
     facts = [dump(ser.fact(f)) for f in db.scalars(select(ExtractedFact).where(ExtractedFact.project_id == p.id))]
+    refs = reference_templates(db, ctx.org_id)
+    existing = pages_dicts(db, p.id)
+    cover_tid = planner.cover_template(project, existing, refs)
+    if cover_tid in refs and ensure_reference_logos(db, ctx.org_id, p.id, refs[cover_tid]):
+        db.commit()  # logo crops are project assets the composed cover points at
     pages, rationale = planner.recommend(project, project["config"], articles, list(assets_by_id(db, p.id).values()),
-                                         profile, pages_dicts(db, p.id), target=(body.target_page_count if body else None),
-                                         speakers=speakers, facts=facts,
-                                         reference_templates=reference_templates(db, ctx.org_id))
+                                         profile, existing, target=(body.target_page_count if body else None),
+                                         speakers=speakers, facts=facts, reference_templates=refs)
     if source == "house_style":
         rationale.insert(1, "No design profile linked to this project: using the PressFlow house style (A4, 3 columns).")
     elif source == "draft":
         rationale.insert(1, "Design profile is still a draft; approve it before final layout.")
     return PlanRecommendResponse(pages=[PageSchema.model_validate(pg) for pg in pages], rationale=rationale)
+
+
+@router.post("/projects/{project_id}/templates/{template_id}/logos", response_model=list[AssetSchema])
+def template_logos(project_id: str, template_id: str, db: DB, ctx=require("design.write")) -> list[AssetSchema]:
+    """Crop the logo artwork of a reconstructed reference template into this project's assets (idempotent)."""
+    p = get_project(db, ctx, project_id)
+    tpl = reference_templates(db, ctx.org_id).get(template_id)
+    if tpl is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    out = ensure_reference_logos(db, ctx.org_id, p.id, tpl)
+    db.commit()
+    return [ser.asset(a) for a in out]

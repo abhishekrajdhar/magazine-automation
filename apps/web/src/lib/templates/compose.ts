@@ -29,10 +29,15 @@ export interface ResolvedSlot extends Omit<SpecSlot, "fx" | "fy" | "fw" | "fh" |
   w: number;
   h: number;
   columns: number;
+  /* From reconstructed reference templates */
+  name?: string;
+  style?: PageElement["style"];
+  fillHex?: string;
+  assetTag?: string;
 }
 
 const TEXT_ROLES: TextRole[] = ["kicker", "headline", "deck", "byline", "body", "subhead", "pullquote", "caption", "folio", "question", "stat"];
-const isTextRole = (r: SlotRole): r is TextRole => (TEXT_ROLES as string[]).includes(r);
+export const isTextRole = (r: SlotRole): r is TextRole => (TEXT_ROLES as string[]).includes(r);
 const IMAGE_ROLES: SlotRole[] = ["hero_image", "image", "portrait"];
 
 export type AnyTemplate = { kind: "spec"; spec: TemplateSpec } | { kind: "reference"; template: Template };
@@ -56,15 +61,29 @@ export function resolveSlots(tpl: AnyTemplate, profile: DesignProfile, pageNumbe
       const key = IMAGE_ROLES.includes(slot.role) ? "image" : slot.role;
       const index = counters[key] ?? 0;
       counters[key] = index + 1;
+      let x = slot.x * W;
+      let y = slot.y * H;
+      let w = slot.w * W;
+      let h = slot.h * H;
+      if (slot.bleed?.top) [h, y] = [h + y + bleed, -bleed];
+      if (slot.bleed?.bottom) h = H + bleed - y;
+      if (slot.bleed?.left) [w, x] = [w + x + bleed, -bleed];
+      if (slot.bleed?.right) w = W + bleed - x;
       return {
         id: slot.id,
         role: slot.role,
-        x: slot.x * W,
-        y: slot.y * H,
-        w: slot.w * W,
-        h: slot.h * H,
+        x,
+        y,
+        w,
+        h,
         columns: slot.columns ?? 1,
         index,
+        name: slot.name,
+        fixedText: slot.fixedText,
+        style: slot.style,
+        fillHex: slot.fill,
+        opacity: slot.opacity,
+        assetTag: slot.assetTag,
       };
     });
   }
@@ -125,6 +144,8 @@ export interface PageContent {
   adAssetId?: string;
   credits?: string;
   coverLines?: string;
+  /** Asset tag → asset id, for logo frames of reconstructed reference covers. */
+  logos?: Record<string, string>;
 }
 
 export const emptyContent = (): PageContent => ({ bodyChunks: [], images: [], captions: [], quotes: [], stats: [], people: [] });
@@ -164,7 +185,7 @@ export function buildElements(tpl: AnyTemplate, profile: DesignProfile, pageNumb
   const t = profile.typography;
 
   slots.forEach((slot, z) => {
-    const base = { id: `el_${slot.id}`, role: slot.role, name: NAMES[slot.role] ?? slot.role, x: round(slot.x), y: round(slot.y), w: round(slot.w), h: round(slot.h), z };
+    const base = { id: `el_${slot.id}`, role: slot.role, name: slot.name ?? NAMES[slot.role] ?? slot.role, x: round(slot.x), y: round(slot.y), w: round(slot.w), h: round(slot.h), z };
     const styleRole: TextRole | undefined = slot.styleRole ?? (isTextRole(slot.role) ? slot.role : undefined);
     const style: PageElement["style"] = {};
     if (slot.sizeScale && styleRole) {
@@ -175,11 +196,16 @@ export function buildElements(tpl: AnyTemplate, profile: DesignProfile, pageNumb
     const colour = fillColor(profile, slot.colorKey);
     if (colour) style.color = colour;
     if (slot.align) style.align = slot.align;
+    if (styleRole && slot.style) Object.assign(style, slot.style); // measured from a reconstructed reference page
     const textEl = (text: string | undefined, extra: Partial<PageElement> = {}): void => {
       if (text === undefined) return;
       elements.push({ ...base, kind: "text", text, styleRole, style: Object.keys(style).length ? style : undefined, columns: slot.columns > 1 ? slot.columns : undefined, gutter: slot.columns > 1 ? profile.grid.gutterPt : undefined, ...extra });
     };
 
+    if (slot.assetTag && IMAGE_ROLES.includes(slot.role)) {
+      elements.push({ ...base, kind: "image", assetId: content.logos?.[slot.assetTag], crop: { scale: 1, offsetX: 0, offsetY: 0 } });
+      return;
+    }
     switch (slot.role) {
       case "hero_image":
       case "image":
@@ -199,7 +225,7 @@ export function buildElements(tpl: AnyTemplate, profile: DesignProfile, pageNumb
       case "background":
       case "accent_bar":
       case "rule":
-        elements.push({ ...base, kind: slot.role === "rule" ? "rule" : "shape", fill: fillColor(profile, slot.fill) ?? profile.colors.rule, opacity: slot.opacity });
+        elements.push({ ...base, kind: slot.role === "rule" ? "rule" : "shape", fill: slot.fillHex ?? fillColor(profile, slot.fill) ?? profile.colors.rule, opacity: slot.opacity });
         return;
       case "headline":
         if (pageType === "cover" && slot.id === "mast") return textEl(content.masthead, { name: "Masthead" });
@@ -534,6 +560,7 @@ function composeStandalone(entry: PlanEntry, pageNumber: number, ctx: ComposeCon
   const tpl = resolveTemplate(entry.templateId, ctx.referenceTemplates);
   const content = emptyContent();
   const p = ctx.project;
+  content.logos = Object.fromEntries(ctx.assets.flatMap((a) => a.tags.filter((t) => t.startsWith("ref-logo:")).map((t) => [t, a.id])));
   if (entry.pageType === "cover") {
     const lead = ctx.articles.find((a) => a.type === "event_report" && a.status === "approved") ?? ctx.articles[0];
     const lines = ctx.articles

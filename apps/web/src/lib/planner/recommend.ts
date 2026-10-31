@@ -3,7 +3,7 @@
  * an AI model, and the UI says so. When an LLM is configured the API can offer
  * its own recommendation; this one always works offline.
  */
-import type { Article, ArticleType, DesignProfile, MagazinePage, PageType, Project } from "@/lib/domain/types";
+import type { Article, ArticleType, DesignProfile, MagazinePage, PageType, Project, Template } from "@/lib/domain/types";
 import { bodyCapacities, resolveTemplate, type PlanEntry } from "@/lib/templates/compose";
 import { specsForPageType, templateSpecs } from "@/lib/templates/specs";
 
@@ -59,7 +59,21 @@ export interface Recommendation {
   rationale: string[];
 }
 
-export function recommendFlatplan(project: Project, articles: Article[], profile: DesignProfile, adAssetIds: string[], existing: MagazinePage[]): Recommendation {
+/**
+ * The cover rebuilt from this project's reference (live masthead and headline frames) when there is one, else the
+ * built-in full-bleed cover. A cover already on the flatplan keeps its template. Mirrors planner.cover_template.
+ */
+export function coverTemplateId(project: Project, existing: MagazinePage[], templates: Template[]): string {
+  const current = existing.find((p) => p.pageType === "cover")?.templateId;
+  if (current) return current;
+  const prefix = `tpl_ref_${project.referenceId}_p`;
+  const ref = [...templates]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .find((t) => t.id.startsWith(prefix) && t.pageType === "cover" && t.slots.some((s) => s.id === "headline"));
+  return ref?.id ?? "tpl_cover_fullbleed";
+}
+
+export function recommendFlatplan(project: Project, articles: Article[], profile: DesignProfile, adAssetIds: string[], existing: MagazinePage[], templates: Template[] = []): Recommendation {
   const rationale: string[] = [];
   const cfg = project.config;
   const usable = articles.filter((a) => a.status !== "rejected" && cfg.articleTypes.includes(a.type));
@@ -73,7 +87,8 @@ export function recommendFlatplan(project: Project, articles: Article[], profile
   const ads = cfg.includeAdvertisements ? adAssetIds.slice(0, cfg.adPageCount) : [];
   const keepCover = existing.find((p) => p.pageType === "cover");
 
-  const plan: PlanEntry[] = [{ pageType: "cover", templateId: "tpl_cover_fullbleed", label: "Cover", imageIds: keepCover?.elements.filter((e) => e.kind === "image" && e.assetId).map((e) => e.assetId!) }];
+  const coverPhoto = keepCover?.elements.filter((e) => e.role === "hero_image" && e.assetId).map((e) => e.assetId!).slice(0, 1);
+  const plan: PlanEntry[] = [{ pageType: "cover", templateId: coverTemplateId(project, existing, templates), label: "Cover", imageIds: coverPhoto?.length ? coverPhoto : undefined }];
   let adCursor = 0;
   const pushAd = (label: string) => {
     const id = ads[adCursor++];

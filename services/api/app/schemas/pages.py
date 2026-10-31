@@ -138,6 +138,13 @@ class Asset(CamelModel):
     simulated: bool
 
 
+class GenerateImageRequest(CamelModel):
+    prompt: str = Field(min_length=3, max_length=4000)
+    aspect: Literal["portrait", "landscape", "square"] = "landscape"
+    caption: str | None = None
+    session_id: ID | None = None
+
+
 class AssetUpdate(CamelModel):
     kind: AssetKind | None = None
     session_id: ID | None = None

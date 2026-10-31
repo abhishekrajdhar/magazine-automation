@@ -104,8 +104,22 @@ def resolve_slots(template: dict, profile: dict, page_number: int) -> list[dict[
             key = "image" if sl["role"] in IMAGE_ROLES else sl["role"]
             idx = counters.get(key, 0)
             counters[key] = idx + 1
-            out.append({"id": sl["id"], "role": sl["role"], "x": sl["x"] * W, "y": sl["y"] * H, "w": sl["w"] * W,
-                        "h": sl["h"] * H, "columns": int(sl.get("columns") or 1), "index": idx})
+            hints = {k: sl[k] for k in ("name", "fixedText", "style", "opacity", "assetTag") if sl.get(k) is not None}
+            if sl.get("fill"):
+                hints["fillHex"] = sl["fill"]
+            x, y, w, h = sl["x"] * W, sl["y"] * H, sl["w"] * W, sl["h"] * H
+            edges = sl.get("bleed") or {}
+            rb = float(profile["page"].get("bleedPt", 9))
+            if edges.get("top"):
+                h, y = h + y + rb, -rb
+            if edges.get("bottom"):
+                h = H + rb - y
+            if edges.get("left"):
+                w, x = w + x + rb, -rb
+            if edges.get("right"):
+                w = W + rb - x
+            out.append({"id": sl["id"], "role": sl["role"], "x": x, "y": y, "w": w, "h": h,
+                        "columns": int(sl.get("columns") or 1), "index": idx, **hints})
         return out
     bleed = float(profile["page"].get("bleedPt", 9))
     recto = page_number % 2 == 1
@@ -176,8 +190,95 @@ def _role_for(block: dict, largest_id: str | None) -> str | None:
     return "body"
 
 
+COVER_TEXT_SLOTS = {"masthead": ("mast", "headline", "Masthead"), "issue_line": ("issue", "kicker", "Issue line"),
+                    "headline": ("headline", "headline", "Headline"), "deck": ("deck", "deck", "Standfirst"),
+                    "cover_line": ("lines", "deck", "Cover lines")}
+
+
+def _text_style(b: dict, page_height: float) -> dict:
+    style: dict[str, Any] = {}
+    if b.get("fontSize"):
+        style["size"] = round(float(b["fontSize"]), 1)
+        style["leading"] = round(float(b["fontSize"]) * 1.08, 1)
+    if b.get("weight"):
+        style["weight"] = int(b["weight"])
+    if b.get("uppercase"):
+        style["uppercase"] = True
+    if b.get("color"):
+        style["color"] = b["color"]
+    if b.get("align"):
+        style["align"] = b["align"]
+    return style
+
+
+def _edges(x: float, y: float, w: float, h: float, tol: float = 0.006) -> dict[str, bool]:
+    """Which trim edges a normalised box touches; those sides extend into the bleed."""
+    return {k: v for k, v in {"top": y <= tol, "bottom": y + h >= 1 - tol, "left": x <= tol,
+                              "right": x + w >= 1 - tol}.items() if v}
+
+
+def derive_cover_template(page: dict, reference_title: str) -> dict | None:
+    """A cover rebuilt from vision-detected elements (see reference_jobs._vision_cover_blocks), or None.
+
+    Slot ids match the built-in cover (mast, issue, headline, deck, lines) so the composer fills them with the
+    project's masthead, issue line, lead headline, standfirst and cover lines. Taglines keep their printed text;
+    logos become graphic frames bound to project assets cropped from this page (ensure_reference_logos).
+    """
+    blocks = page.get("blocks") or []
+    vision = [b for b in blocks if b.get("coverRole")]
+    if not vision:
+        return None
+    H = float(page.get("heightPt") or 792)
+    tid = ref_template_id(page["referenceId"], page["pageNumber"])
+    slots: list[dict] = [{"id": "bg", "role": "hero_image", "x": 0, "y": 0, "w": 1, "h": 1, "name": "Cover image",
+                          "bleed": _edges(0, 0, 1, 1)}]
+    for i, b in enumerate(b for b in vision if b["coverRole"] == "band"):
+        slots.append({"id": f"band{i + 1}", "role": "background", "x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"],
+                      "name": "Band", **({"fill": b["fill"]} if b.get("fill") else {}), "opacity": 1,
+                      "bleed": _edges(b["x"], b["y"], b["w"], b["h"])})
+    logos = [b for b in vision if b["coverRole"] == "logo" or (b["coverRole"] == "masthead" and b.get("kind") == "image")]
+    for i, b in enumerate(logos):
+        sid = f"logo{i + 1}"
+        slots.append({"id": sid, "role": "image", "x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"],
+                      "name": f"Logo: {b.get('description') or 'logo'}"[:120], "assetTag": f"ref-logo:{tid}:{sid}"})
+    lines = [b for b in vision if b["coverRole"] == "cover_line"]
+    used: set[str] = set()
+    for b in vision:
+        role = b["coverRole"]
+        if b.get("kind") != "text":
+            continue
+        if role == "tagline":
+            slots.append({"id": f"tag{sum(1 for s in slots if s['id'].startswith('tag')) + 1}", "role": "kicker",
+                          "x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"], "name": "Tagline",
+                          "fixedText": b.get("sample") or "", "style": _text_style(b, H)})
+            continue
+        if role not in COVER_TEXT_SLOTS:
+            continue
+        sid, srole, name = COVER_TEXT_SLOTS[role]
+        if sid in used:
+            continue
+        used.add(sid)
+        x, y, w, h = b["x"], b["y"], b["w"], b["h"]
+        if role == "cover_line" and len(lines) > 1:  # one flowing frame covering every teaser
+            x, y = min(l["x"] for l in lines), min(l["y"] for l in lines)
+            w = max(l["x"] + l["w"] for l in lines) - x
+            h = max(l["y"] + l["h"] for l in lines) - y
+        slots.append({"id": sid, "role": srole, "x": x, "y": y, "w": w, "h": h, "name": name,
+                      "style": _text_style(b, H)})
+    return {
+        "id": tid, "name": f"Cover — reference p.{page['pageNumber']}", "pageType": "cover", "source": "reference",
+        "referencePageNumber": page["pageNumber"],
+        "description": (f"Rebuilt from page {page['pageNumber']} of {reference_title}: {len(slots)} frames — live "
+                        f"masthead, headline and cover lines, {len(logos)} logo graphic(s) and the cover image."),
+        "slots": slots, "columns": 1,
+    }
+
+
 def derive_template(page: dict, reference_title: str) -> dict:
     """`page` is a ReferencePage in API (camelCase) shape."""
+    cover = derive_cover_template(page, reference_title)
+    if cover is not None:
+        return cover
     blocks = page.get("blocks") or []
     images = [b for b in blocks if b.get("kind") == "image"]
     largest = max(images, key=lambda b: b["w"] * b["h"], default=None)

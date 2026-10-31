@@ -25,6 +25,10 @@ os.environ.update({
     "GOOGLE_CLIENT_SECRET": "",
     "YOUTUBE_API_KEY": "",
     "ANTHROPIC_API_KEY": "",
+    # Never let a developer's real key from services/api/.env reach a paid API from the test suite.
+    "OPENAI_API_KEY": "",
+    "OPENAI_BASE_URL": "https://api.openai.invalid/v1",
+    "TRANSCRIPTION_API_KEY": "",
     "JOB_BACKOFF_BASE_SECONDS": "0",
 })
 

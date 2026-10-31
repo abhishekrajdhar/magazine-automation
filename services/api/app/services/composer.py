@@ -142,6 +142,7 @@ def compose_standalone(entry: PlanEntry, page_number: int, ctx: ComposeContext, 
     p = ctx.project
     content = PageContent()
     assets = {a["id"]: a for a in ctx.assets}
+    content.logos = {t: a["id"] for a in ctx.assets for t in (a.get("tags") or []) if t.startswith("ref-logo:")}
     if entry.page_type == "cover":
         approved_reports = [a for a in ctx.articles if a.get("type") == "event_report" and a.get("status") == "approved"]
         lead = approved_reports[0] if approved_reports else (ctx.articles[0] if ctx.articles else None)

@@ -69,6 +69,13 @@ def status_list(db: Session, org_id: str) -> list[dict]:
     out.append(_item("llm", f"AI writing ({llm.name})", configured, avail, adetail if configured else cdetail,
                      "OPENAI_API_KEY or ANTHROPIC_API_KEY (LLM_PROVIDER=auto prefers OpenAI when both are set)."))
 
+    # ai images
+    from app.services import images
+
+    iconf, idetail = images.configured()
+    out.append(_item("images", "AI images", iconf, iconf, idetail,
+                     "OPENAI_API_KEY; IMAGE_MODEL (default gpt-image-2), IMAGE_QUALITY. IMAGE_PROVIDER=none turns it off."))
+
     # transcription
     tr = get_transcriber()
     tconf, tdetail = tr.configured()

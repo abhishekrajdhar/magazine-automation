@@ -102,7 +102,15 @@ class OpenAICompatibleProvider(LLMProvider):
         if r.status_code == 401:
             raise LLMError("The OpenAI-compatible endpoint rejected the API key (401).")
         if r.status_code == 429 or r.status_code >= 500:
-            raise LLMError(f"Endpoint returned HTTP {r.status_code}.", retryable=True)
+            try:
+                err = r.json().get("error") or {}
+            except ValueError:
+                err = {}
+            # An empty balance is not a rate limit: retrying won't help, and the editor needs to know why.
+            if err.get("code") in ("insufficient_quota", "credit_balance_exhausted"):
+                raise LLMError(f"The OpenAI account has no credits left: {err.get('message') or 'add credits'}")
+            detail = f": {err['message'][:200]}" if err.get("message") else "."
+            raise LLMError(f"Endpoint returned HTTP {r.status_code}{detail}", retryable=True)
         if r.status_code >= 400:
             raise LLMError(f"Endpoint returned HTTP {r.status_code}: {r.text[:300]}")
         try:

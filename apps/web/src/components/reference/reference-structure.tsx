@@ -49,7 +49,7 @@ export function ReferenceStructure({ page, width, overlay, highlightRole, classN
       <rect width={W} height={H} fill="#fff" />
       <g clipPath={`url(#${id}c)`}>
         {page.blocks.map((b) => (
-          <Block key={b.id} b={b} W={W} H={H} hatch={`url(#${id}h)`} overlay={overlay} dim={!!highlightRole && (b.role ?? b.kind) !== highlightRole} />
+          <Block key={b.id} b={b} W={W} H={H} hatch={`url(#${id}h)`} overlay={overlay} dim={!!highlightRole && (b.coverRole ?? b.role ?? b.kind) !== highlightRole} />
         ))}
       </g>
     </svg>

@@ -38,6 +38,7 @@ class PageContent:
     ad_asset_id: str | None = None
     credits: str | None = None
     cover_lines: str | None = None
+    logos: dict[str, str] = field(default_factory=dict)  # asset tag -> asset id (reference cover logos)
 
 
 def fill_color(profile: dict, key: str | None) -> str | None:
@@ -76,7 +77,7 @@ def build_elements(template: dict, profile: dict, page_number: int, content: Pag
     image_slot_assets: list[str | None] = []
     for z, slot in enumerate(slots):
         role = slot["role"]
-        base = {"id": f"el_{slot['id']}", "role": role, "name": NAMES.get(role, role), "x": _r(slot["x"]),
+        base = {"id": f"el_{slot['id']}", "role": role, "name": slot.get("name") or NAMES.get(role, role), "x": _r(slot["x"]),
                 "y": _r(slot["y"]), "w": _r(slot["w"]), "h": _r(slot["h"]), "z": z}
         style_role = slot.get("styleRole") or (role if role in TEXT_ROLES else None)
         style: dict[str, Any] = {}
@@ -90,6 +91,8 @@ def build_elements(template: dict, profile: dict, page_number: int, content: Pag
             style["color"] = colour
         if slot.get("align"):
             style["align"] = slot["align"]
+        if style_role and slot.get("style"):  # measured from a reconstructed reference page
+            style.update(slot["style"])
         cols = int(slot.get("columns") or 1)
 
         def text_el(text: str | None, **extra: Any) -> None:
@@ -104,7 +107,12 @@ def build_elements(template: dict, profile: dict, page_number: int, content: Pag
             el.update(extra)
             elements.append(el)
 
-        if role in ("hero_image", "image", "portrait"):
+        if role in ("hero_image", "image", "portrait") and slot.get("assetTag"):
+            el = {**base, "kind": "image", "crop": {"scale": 1, "offsetX": 0, "offsetY": 0}}
+            if content.logos.get(slot["assetTag"]):
+                el["assetId"] = content.logos[slot["assetTag"]]
+            elements.append(el)
+        elif role in ("hero_image", "image", "portrait"):
             if page_type == "speaker_profile":
                 person = content.people[slot.get("index") or 0] if (slot.get("index") or 0) < len(content.people) else None
                 asset_id = person.get("portraitId") if person else None
@@ -126,7 +134,7 @@ def build_elements(template: dict, profile: dict, page_number: int, content: Pag
             elements.append(el)
         elif role in ("background", "accent_bar", "rule"):
             el = {**base, "kind": "rule" if role == "rule" else "shape",
-                  "fill": fill_color(profile, slot.get("fill")) or profile["colors"]["rule"]}
+                  "fill": slot.get("fillHex") or fill_color(profile, slot.get("fill")) or profile["colors"]["rule"]}
             if slot.get("opacity") is not None:
                 el["opacity"] = slot["opacity"]
             elements.append(el)

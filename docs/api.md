@@ -59,6 +59,7 @@ Base path: `/api/v1`. Served by `services/api` (FastAPI). Interactive OpenAPI do
 | GET | `/projects/{id}/activity` | `ActivityItem[]` |
 | GET | `/projects/{id}/assets` | `Asset[]` |
 | POST | `/projects/{id}/assets` | multipart `file` (JPEG/PNG/WebP/TIFF, ≤ `MAX_ASSET_UPLOAD_MB`), `kind`, `caption?`, `credit?`, `sessionId?`, `speakerId?` → `201 Asset` (`url` = `/api/v1/assets/{id}/file`) |
+| POST | `/projects/{id}/assets/generate` | `{prompt, aspect: portrait\|landscape\|square, sessionId?}` → `201 Asset` (photo tagged `ai-generated`, credit names the model). `503` when AI images aren't configured, `422` when the image service refuses the prompt. |
 | PATCH | `/assets/{id}` | `{kind?, sessionId?, speakerId?, tags?, caption?, credit?}` |
 | GET | `/assets/{id}/file` | authorised stream (S3: `307` to a short-lived presigned URL) |
 

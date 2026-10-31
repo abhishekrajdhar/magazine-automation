@@ -285,7 +285,8 @@ export function AssetPicker({ assets, onPick, sessionHint }: { assets: Asset[]; 
   const [onlySession, setOnlySession] = React.useState(!!sessionHint?.length);
   const list = assets
     .filter((a) => a.kind !== "ad")
-    .filter((a) => !onlySession || !sessionHint?.length || (a.sessionId && sessionHint.includes(a.sessionId)) || a.kind === "portrait")
+    // Images not tied to a session (uploads, AI illustrations) suit any article.
+    .filter((a) => !onlySession || !sessionHint?.length || !a.sessionId || sessionHint.includes(a.sessionId) || a.kind === "portrait")
     .filter((a) => !q || `${a.caption} ${a.fileName} ${a.tags.join(" ")}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="flex flex-col gap-2">
@@ -305,6 +306,7 @@ export function AssetPicker({ assets, onPick, sessionHint }: { assets: Asset[]; 
               <PlaceholderPhoto seed={a.seed} tag={a.tags[0] ?? "stage"} className="h-full w-full" />
             )}
             {a.widthPx < 2000 && <span className="absolute bottom-0.5 right-0.5 rounded bg-warning-dot px-1 text-[8px] font-bold text-white">LOW</span>}
+            {a.tags.includes("ai-generated") && <span className="absolute left-0.5 top-0.5 rounded bg-accent px-1 text-[8px] font-bold text-white">AI</span>}
           </button>
         ))}
       </div>

@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     transcription_max_chunk_bytes: int = 24 * 1024 * 1024
     whisper_local_model: str = "small"
 
+    # --- AI images ----------------------------------------------------------
+    image_provider: Literal["auto", "none"] = "auto"  # auto: OpenAI /images/generations when OPENAI_API_KEY is set
+    image_model: str = "gpt-image-2"
+    image_quality: Literal["low", "medium", "high", "auto"] = "high"
+    image_timeout_seconds: float = 240.0
+
     # --- YouTube / Google -------------------------------------------------
     youtube_api_key: str = ""
     youtube_allow_download: bool = False
