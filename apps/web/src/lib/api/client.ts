@@ -60,10 +60,16 @@ export async function apiUpload<T>(path: string, form: FormData, onProgress?: (f
     xhr.withCredentials = true;
     xhr.responseType = "json";
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
-    xhr.onerror = () => reject(new ApiUnavailableError());
+    // A dropped upload isn't proof the API is down: the proxy may have cut off
+    // a large body. Ask the API before blaming it.
+    const transportFailure = async (status?: number) => {
+      if (!(await apiHealth())) return reject(new ApiUnavailableError());
+      reject(new ApiError(`The upload didn't reach the API${status ? ` (HTTP ${status})` : ""}. The file may be larger than the server accepts, or the connection was interrupted — try again, or check the web server log.`, status ?? 0));
+    };
+    xhr.onerror = () => void transportFailure();
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response as T);
-      else if (xhr.status >= 500 && !xhr.response) reject(new ApiUnavailableError());
+      else if (xhr.status >= 500 && !xhr.response) void transportFailure(xhr.status);
       else reject(new ApiError(messageFrom(xhr.response, `Upload failed (${xhr.status})`), xhr.status, xhr.response));
     };
     xhr.send(form);
