@@ -9,12 +9,21 @@ import json
 import time
 from typing import Any
 
+from urllib.parse import urlparse
+
 import httpx
 
 from app.config import get_settings
 from app.services.llm.base import LLMError, LLMNotConfigured, LLMProvider
 
 _check_cache: dict[str, tuple[float, tuple[bool, str]]] = {}
+# base_url + model → the token-limit parameter that endpoint accepted.
+_token_param_cache: dict[str, str] = {}
+
+
+def _rejects_param(error_text: str, param: str) -> bool:
+    text = error_text.lower()
+    return param in text and ("unsupported" in text or "unrecognized" in text or "not supported" in text or "extra" in text)
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -54,22 +63,42 @@ class OpenAICompatibleProvider(LLMProvider):
         _check_cache[key] = (time.monotonic(), result)
         return result
 
+    def _token_param(self) -> str:
+        """`max_completion_tokens` for OpenAI (required by reasoning models, accepted by all
+        current models); `max_tokens` for other OpenAI-compatible servers."""
+        cached = _token_param_cache.get(self.base_url + self.model)
+        if cached:
+            return cached
+        host = urlparse(self.base_url).hostname or ""
+        return "max_completion_tokens" if host == "api.openai.com" or host.endswith(".openai.azure.com") else "max_tokens"
+
+    def _post(self, body: dict[str, Any]) -> httpx.Response:
+        try:
+            return httpx.post(f"{self.base_url}/chat/completions", headers=self._headers(), json=body, timeout=self.timeout)
+        except httpx.HTTPError as e:
+            raise LLMError(f"Could not reach {self.base_url}: {e}", retryable=True) from e
+
     def complete_json(self, *, system: str, prompt: str, schema: dict[str, Any], images: list[bytes] | None = None,
                       max_tokens: int | None = None, schema_name: str = "result") -> dict[str, Any]:
         user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         for img in images or []:
             b64 = base64.b64encode(img).decode("ascii")
             user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
-        body = {
+        body: dict[str, Any] = {
             "model": self.model,
-            "max_tokens": max_tokens or self.max_tokens,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_content}],
             "response_format": {"type": "json_schema", "json_schema": {"name": schema_name, "schema": schema, "strict": True}},
         }
-        try:
-            r = httpx.post(f"{self.base_url}/chat/completions", headers=self._headers(), json=body, timeout=self.timeout)
-        except httpx.HTTPError as e:
-            raise LLMError(f"Could not reach {self.base_url}: {e}", retryable=True) from e
+        limit = max_tokens or self.max_tokens
+        param = self._token_param()
+        r = self._post({**body, param: limit})
+        # Servers disagree on the token-limit name: OpenAI's reasoning models reject
+        # `max_tokens`, while some compatible servers only know `max_tokens`. Swap once.
+        if r.status_code == 400 and _rejects_param(r.text, param):
+            param = "max_tokens" if param == "max_completion_tokens" else "max_completion_tokens"
+            r = self._post({**body, param: limit})
+            if r.status_code < 400:
+                _token_param_cache[self.base_url + self.model] = param
         if r.status_code == 401:
             raise LLMError("The OpenAI-compatible endpoint rejected the API key (401).")
         if r.status_code == 429 or r.status_code >= 500:
