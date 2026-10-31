@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* PressFlow design tokens                                             */
+/* ------------------------------------------------------------------ */
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Surfaces */
+  --color-canvas: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-subtle: #faf9f6;
+  --color-sunken: #f0eee9;
+  --color-hover: #f3f2ee;
+
+  /* Ink */
+  --color-ink: #0e1726;
+  --color-ink-2: #3c475a;
+  --color-ink-3: #687184;
+  --color-ink-4: #9aa1ae;
+
+  /* Lines */
+  --color-line: #e6e3dc;
+  --color-line-strong: #d5d1c7;
+
+  /* Elets-inspired accent */
+  --color-accent: #2251cc;
+  --color-accent-hover: #1b44b0;
+  --color-accent-soft: #edf1fd;
+  --color-accent-line: #c9d6f7;
+  --color-accent-ink: #1a3a94;
+  --color-navy: #0f1e3d;
+
+  /* Status */
+  --color-success: #1d7449;
+  --color-success-dot: #2f9e65;
+  --color-success-soft: #e8f3ec;
+  --color-warning: #9a5800;
+  --color-warning-dot: #df900e;
+  --color-warning-soft: #fcf2de;
+  --color-danger: #b42318;
+  --color-danger-dot: #d9402f;
+  --color-danger-soft: #fdeeec;
+  --color-info: #3c475a;
+  --color-info-soft: #eef0f3;
+
+  /* Type scale (UI is dense; magazine pages use their own pt sizes) */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.05rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.45rem;
+
+  /* Radii — restrained */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 9px;
+  --radius-xl: 12px;
+
+  /* Elevation */
+  --shadow-xs: 0 1px 1px rgb(14 23 38 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(14 23 38 / 0.05), 0 1px 1px rgb(14 23 38 / 0.03);
+  --shadow-md: 0 6px 16px -6px rgb(14 23 38 / 0.12), 0 2px 4px -2px rgb(14 23 38 / 0.06);
+  --shadow-lg: 0 24px 48px -16px rgb(14 23 38 / 0.22), 0 6px 14px -6px rgb(14 23 38 / 0.1);
+  --shadow-page: 0 1px 2px rgb(14 23 38 / 0.08), 0 8px 24px -8px rgb(14 23 38 / 0.18);
+
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-pulse-dot: pulse-dot 1.8s ease-in-out infinite;
+
+  @keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+  ::selection {
+    background: var(--color-accent-line);
+    color: var(--color-ink);
+  }
+  *:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@layer components {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-sunken) 0%, #f7f6f2 40%, var(--color-sunken) 80%);
+    background-size: 800px 100%;
+    animation: var(--animate-shimmer);
+    border-radius: var(--radius-sm);
+  }
+  .hairline-grid {
+    background-image:
+      linear-gradient(to right, rgb(14 23 38 / 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(14 23 38 / 0.045) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .canvas-backdrop {
+    background-color: #e9e7e1;
+    background-image: radial-gradient(rgb(14 23 38 / 0.08) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+}
+
+/* Magazine page text: paragraphs inside rendered frames */
+.pf-frame p {
+  margin: 0;
+}
+.pf-frame p + p {
+  text-indent: var(--pf-indent, 0);
+}
+.pf-frame[data-columns] {
+  column-fill: balance;
+}
+.pf-frame .pf-q {
+  font-family: var(--pf-q-font);
+  font-weight: 700;
+  text-indent: 0;
+  margin-top: 0.6em;
+}
+.pf-frame .pf-a {
+  text-indent: 0;
+}
+.pf-frame .pf-sub {
+  font-weight: 700;
+  text-indent: 0;
+  margin-top: 0.55em;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

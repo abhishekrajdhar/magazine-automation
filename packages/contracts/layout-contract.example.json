@@ -1,0 +1,61 @@
+{
+  "contract_version": "1.0",
+  "generated_at": "2026-10-31T12:00:00Z",
+  "project_id": "prj_negs26",
+  "document": {
+    "title": "eGov — National eGovernance Summit 2026 Special",
+    "issue": "Vol. 22 · Issue 11",
+    "publication_date": "2026-11-15",
+    "page_width_pt": 595.28,
+    "page_height_pt": 841.89,
+    "bleed_pt": 9,
+    "facing_pages": true,
+    "margins": { "top": 54, "bottom": 60, "inside": 48, "outside": 42 },
+    "columns": 3,
+    "gutter_pt": 14,
+    "baseline_pt": 13
+  },
+  "styles": {
+    "colors": [
+      { "name": "PF Ink", "hex": "#14213D", "cmyk": [90, 75, 30, 45] },
+      { "name": "PF Accent", "hex": "#1F4FD8", "cmyk": [90, 65, 0, 0] },
+      { "name": "PF Paper", "hex": "#FFFFFF", "cmyk": [0, 0, 0, 0] }
+    ],
+    "paragraph": [
+      { "name": "PF Headline", "role": "headline", "font_family": "Minion Pro", "font_style": "Bold", "fallback_family": "Times-Bold", "size_pt": 34, "leading_pt": 37, "tracking": -10, "color": "PF Ink", "align": "left" },
+      { "name": "PF Deck", "role": "deck", "font_family": "Myriad Pro", "font_style": "Regular", "fallback_family": "Helvetica", "size_pt": 13, "leading_pt": 17, "color": "PF Ink" },
+      { "name": "PF Body", "role": "body", "font_family": "Minion Pro", "font_style": "Regular", "fallback_family": "Times-Roman", "size_pt": 9.5, "leading_pt": 13, "color": "PF Ink", "align": "justify", "first_line_indent_pt": 9 },
+      { "name": "PF Pull Quote", "role": "pullquote", "font_family": "Minion Pro", "font_style": "Italic", "fallback_family": "Times-Italic", "size_pt": 17, "leading_pt": 21, "color": "PF Accent" },
+      { "name": "PF Caption", "role": "caption", "font_family": "Myriad Pro", "font_style": "Regular", "fallback_family": "Helvetica", "size_pt": 7.5, "leading_pt": 9.5, "color": "PF Ink" },
+      { "name": "PF Folio", "role": "folio", "font_family": "Myriad Pro", "font_style": "Semibold", "fallback_family": "Helvetica-Bold", "size_pt": 7.5, "leading_pt": 9, "color": "PF Ink" }
+    ],
+    "character": [{ "name": "PF Speaker Name", "font_style": "Bold" }],
+    "object": [{ "name": "PF Hero Image", "stroke_weight_pt": 0, "text_wrap": "bounding_box" }]
+  },
+  "masters": [
+    { "name": "A-Article", "folio": { "position": "bottom_outside", "paragraph_style": "PF Folio", "running_text": "eGov · November 2026" } }
+  ],
+  "pages": [
+    {
+      "page_number": 12,
+      "page_type": "event_report",
+      "template_id": "tpl_event_report_hero",
+      "master": "A-Article",
+      "article_id": "art_summit_report",
+      "headline": "Building the Rails for a Digital Bharat",
+      "subheadline": "National eGovernance Summit 2026",
+      "body": "Approved article content…",
+      "hero_image": "ast_0001",
+      "columns": 2,
+      "pull_quotes": ["Infrastructure is only public when every citizen can actually use it."],
+      "caption": "Delegates at the inaugural session of the summit",
+      "approved": true,
+      "frames": [
+        { "id": "f1", "kind": "image", "role": "hero_image", "bounds_pt": [0, 0, 380, 595.28], "image": { "asset_id": "ast_0001", "fitting": "fill_proportionally" } },
+        { "id": "f2", "kind": "text", "role": "headline", "bounds_pt": [400, 42, 470, 547], "paragraph_style": "PF Headline", "content": "Building the Rails for a Digital Bharat", "fit": "shrink_to_fit" },
+        { "id": "f3", "kind": "text", "role": "body", "bounds_pt": [520, 42, 782, 547], "paragraph_style": "PF Body", "columns": 2, "gutter_pt": 14, "content": "Approved article content…" }
+      ]
+    }
+  ],
+  "assets": [{ "id": "ast_0001", "file": "photos/ast_0001.jpg", "width_px": 4000, "height_px": 2667, "credit": "Elets Photo Desk" }]
+}

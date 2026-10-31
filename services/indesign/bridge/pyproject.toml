@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pressflow-indesign-bridge"
+version = "0.1.0"
+description = "PressFlow AI bridge worker: pulls render jobs from the PressFlow API and drives Adobe InDesign desktop or InDesign Server."
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "Elets Technomedia" }]
+# Standard library only at runtime. pywin32 is needed only for the Windows desktop (COM) runner.
+dependencies = []
+
+[project.optional-dependencies]
+windows = ["pywin32>=306; sys_platform == 'win32'"]
+test = ["pytest>=8", "jsonschema>=4.18"]
+
+[project.scripts]
+pressflow-bridge = "pressflow_bridge.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pressflow_bridge"]
+
+# Ship the ExtendScript files inside the wheel so an installed bridge finds them without the repo.
+[tool.hatch.build.targets.wheel.force-include]
+"../extendscript" = "pressflow_bridge/extendscript"

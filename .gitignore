@@ -1,0 +1,11 @@
+.DS_Store
+*.nosync
+node_modules
+.next
+.venv
+var
+__pycache__
+*.pyc
+.env
+.env.local
+.claude/

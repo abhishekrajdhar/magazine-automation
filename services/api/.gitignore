@@ -1,0 +1,12 @@
+# Python / uv (venv lives in a *.nosync dir so iCloud "optimise storage" never evicts it)
+.venv
+.venv.nosync/
+.venv.*.nosync/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local data (SQLite DB, local object storage, dev secret, demo credentials)
+var
+var.nosync/
+.env

@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pressflow.elets.in/contracts/layout-contract/1.0",
+  "title": "PressFlow Layout Contract",
+  "description": "The hand-off between the PressFlow AI/editorial engine and a page renderer (Adobe InDesign, the ReportLab preview renderer, or the browser preview). All geometry is in PostScript points. Frame bounds use InDesign geometricBounds order: [top, left, bottom, right], measured from the top-left of each page's trim box.",
+  "type": "object",
+  "required": ["contract_version", "document", "styles", "pages", "assets"],
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": { "const": "1.0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "project_id": { "type": "string" },
+    "document": {
+      "type": "object",
+      "required": ["title", "page_width_pt", "page_height_pt", "facing_pages", "margins", "columns", "gutter_pt"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "issue": { "type": "string" },
+        "publication_date": { "type": "string" },
+        "page_width_pt": { "type": "number", "exclusiveMinimum": 0 },
+        "page_height_pt": { "type": "number", "exclusiveMinimum": 0 },
+        "bleed_pt": { "type": "number", "minimum": 0, "default": 9 },
+        "facing_pages": { "type": "boolean" },
+        "margins": {
+          "type": "object",
+          "required": ["top", "bottom", "inside", "outside"],
+          "additionalProperties": false,
+          "properties": {
+            "top": { "type": "number", "minimum": 0 },
+            "bottom": { "type": "number", "minimum": 0 },
+            "inside": { "type": "number", "minimum": 0 },
+            "outside": { "type": "number", "minimum": 0 }
+          }
+        },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "gutter_pt": { "type": "number", "minimum": 0 },
+        "baseline_pt": { "type": "number", "minimum": 0 },
+        "template_document": {
+          "type": "string",
+          "description": "Optional path (relative to the renderer's template root) of an approved .indt/.indd whose styles and masters should be used instead of building them from this contract."
+        }
+      }
+    },
+    "styles": {
+      "type": "object",
+      "required": ["colors", "paragraph"],
+      "additionalProperties": false,
+      "properties": {
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "hex"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "cmyk": {
+                "type": "array",
+                "items": { "type": "number", "minimum": 0, "maximum": 100 },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            }
+          }
+        },
+        "paragraph": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/paragraphStyle" }
+        },
+        "character": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "font_family": { "type": "string" },
+              "font_style": { "type": "string" },
+              "color": { "type": "string" }
+            }
+          }
+        },
+        "object": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "fill": { "type": "string" },
+              "stroke": { "type": "string" },
+              "stroke_weight_pt": { "type": "number", "minimum": 0 },
+              "corner_radius_pt": { "type": "number", "minimum": 0 },
+              "text_wrap": { "enum": ["none", "bounding_box", "contour"] }
+            }
+          }
+        }
+      }
+    },
+    "masters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "description": "e.g. 'A-Article'" },
+          "folio": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "position": { "enum": ["bottom_outside", "bottom_center", "top_outside", "none"] },
+              "paragraph_style": { "type": "string" },
+              "running_text": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/page" }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "file"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string", "description": "Path relative to the asset root handed to the renderer." },
+          "width_px": { "type": "integer", "minimum": 1 },
+          "height_px": { "type": "integer", "minimum": 1 },
+          "credit": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "paragraphStyle": {
+      "type": "object",
+      "required": ["name", "font_family", "size_pt", "leading_pt"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "e.g. 'PF Headline'" },
+        "role": { "type": "string" },
+        "font_family": { "type": "string" },
+        "font_style": { "type": "string", "default": "Regular" },
+        "fallback_family": { "type": "string" },
+        "size_pt": { "type": "number", "exclusiveMinimum": 0 },
+        "leading_pt": { "type": "number", "exclusiveMinimum": 0 },
+        "tracking": { "type": "number", "description": "1/1000 em, InDesign units." },
+        "color": { "type": "string", "description": "Name of a swatch in styles.colors." },
+        "uppercase": { "type": "boolean" },
+        "align": { "enum": ["left", "center", "right", "justify"] },
+        "space_before_pt": { "type": "number", "minimum": 0 },
+        "space_after_pt": { "type": "number", "minimum": 0 },
+        "first_line_indent_pt": { "type": "number", "minimum": 0 },
+        "drop_cap_lines": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": ["id", "kind", "bounds_pt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["text", "image", "rect", "line"] },
+        "role": { "type": "string" },
+        "label": { "type": "string" },
+        "bounds_pt": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "z": { "type": "integer" },
+        "paragraph_style": { "type": "string" },
+        "content": { "type": "string", "description": "Plain text. Paragraphs separated by \\n\\n." },
+        "columns": { "type": "integer", "minimum": 1 },
+        "gutter_pt": { "type": "number", "minimum": 0 },
+        "fit": { "enum": ["none", "shrink_to_fit", "grow_frame"], "default": "none" },
+        "image": {
+          "type": "object",
+          "required": ["asset_id"],
+          "additionalProperties": false,
+          "properties": {
+            "asset_id": { "type": "string" },
+            "fitting": { "enum": ["fill_proportionally", "fit_proportionally", "center"], "default": "fill_proportionally" },
+            "scale": { "type": "number", "exclusiveMinimum": 0 },
+            "offset_x": { "type": "number", "minimum": -1, "maximum": 1 },
+            "offset_y": { "type": "number", "minimum": -1, "maximum": 1 }
+          }
+        },
+        "object_style": { "type": "string" },
+        "fill": { "type": "string" },
+        "stroke": { "type": "string" },
+        "stroke_weight_pt": { "type": "number", "minimum": 0 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["page_number", "page_type", "template_id", "frames"],
+      "additionalProperties": false,
+      "properties": {
+        "page_number": { "type": "integer", "minimum": 1 },
+        "page_type": {
+          "enum": [
+            "cover",
+            "editorial",
+            "toc",
+            "interview",
+            "event_report",
+            "two_column_article",
+            "full_page_image",
+            "photo_gallery",
+            "advertisement",
+            "infographic",
+            "speaker_profile"
+          ]
+        },
+        "template_id": { "type": "string" },
+        "master": { "type": "string" },
+        "article_id": { "type": "string" },
+        "headline": { "type": "string" },
+        "subheadline": { "type": "string" },
+        "body": { "type": "string" },
+        "hero_image": { "type": "string" },
+        "columns": { "type": "integer", "minimum": 1 },
+        "pull_quotes": { "type": "array", "items": { "type": "string" } },
+        "caption": { "type": "string" },
+        "approved": { "type": "boolean", "description": "Renderers must refuse to produce final output for pages whose content is not approved unless explicitly forced." },
+        "frames": { "type": "array", "items": { "$ref": "#/$defs/frame" } }
+      }
+    }
+  }
+}

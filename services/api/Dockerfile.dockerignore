@@ -1,0 +1,12 @@
+# BuildKit uses this file for `docker build -f services/api/Dockerfile .` (context = repo root).
+**/.git
+**/node_modules
+apps/
+services/indesign/
+services/api/.venv
+services/api/.venv*
+services/api/var
+services/api/var.nosync
+services/api/.env
+**/__pycache__
+**/.pytest_cache
