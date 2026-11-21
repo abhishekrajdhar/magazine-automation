@@ -36,15 +36,15 @@ Base path: `/api/v1`. Served by `services/api` (FastAPI). Interactive OpenAPI do
 
 | Method | Path | Body → Response |
 |---|---|---|
-| POST | `/auth/signup` | `{name, email, password(≥8), organisationName, title?}` → `201 {user, organisation, role: "owner", token}` + cookie |
-| POST | `/auth/login` | `{email, password}` → `{user, organisation, role, token}` + cookie. Signing in accepts pending invitations. |
+| POST | `/auth/signup` | `{name, email, password(≥8), organisationName, title?}` → `201 {user, organisation, role: "owner", token}` + cookie. `403` when `ALLOW_SIGNUP=false` or the e-mail domain is not in `SIGNUP_ALLOWED_DOMAINS`. |
+| POST | `/auth/login` | `{email, password}` → `{user, organisation, role, token}` + cookie. Signing in accepts pending invitations. `429` with `Retry-After` after `LOGIN_MAX_FAILURES` failed attempts for that e-mail within `LOGIN_LOCK_MINUTES`. |
 | POST | `/auth/logout` | clears the cookie |
 | GET | `/auth/me` | `{user: User, organisation: Organisation, role: Role}` |
-| POST | `/auth/forgot-password` | `{email}` → `202 {ok, message}` always (no account enumeration). Token is never returned; in dev the reset link `{FRONTEND_URL}/reset-password?token=…` is written to the server log. |
+| POST | `/auth/forgot-password` | `{email}` → `202 {ok, message}` always (no account enumeration). Token is never returned. The link `{FRONTEND_URL}/reset-password?token=…` is e-mailed when `EMAIL_BACKEND=smtp`; in dev it is written to the server log. |
 | POST | `/auth/reset-password` | `{token, password}` → `{ok}`. Invalidates existing sessions. |
 | GET | `/orgs/current` | `Organisation` |
 | GET | `/orgs/current/members` | `Member[]` (+ additive `status: active\|invited`) |
-| POST | `/orgs/current/members` | admin/owner. `{email, name, role, title?}` → `201 Member` (invite record; the invitee sets a password via forgot-password, or signs in if they already have an account) |
+| POST | `/orgs/current/members` | admin/owner. `{email, name, role, title?}` → `201 Member`. For a person with no password yet the response also carries `inviteLink` (one-time set-password link, valid `INVITE_TTL_HOURS`) and `inviteEmailed`; someone who already has an account gets no link and simply signs in. |
 | PATCH | `/orgs/current/members/{userId}` | admin/owner. `{role}` → `Member` (only owners grant/revoke `owner`; the last owner cannot be demoted) |
 | GET | `/orgs/current/activity?limit=` | `ActivityItem[]` |
 
@@ -90,6 +90,15 @@ Terminal non-success states: `failed` (error after retries), `needs_auth` (Drive
 **Grounding rules.** Every fact references a real segment (`videoId`, `segmentId`, `timestamp`); quotes that cannot be
 grounded are dropped. `provenance: transcript_verbatim` only when the text is found in the transcript (normalised
 match), otherwise `ai_interpretation`. Speakers from the LLM are stored as `ai_suggested`, never `confirmed`.
+
+## Elets CMS import & house typography
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/cms/sources` | `{sites: [{key, name, url}], kinds: [{key, label, articleType}]}`. The only hosts the API ever contacts for this feature. |
+| GET | `/cms/posts?site=&kind=&search=&limit=` | `CmsPost[]` = `{id, site, kind, title, date, link, excerpt, wordCount, imageUrl?}` read from the portal's public WordPress API. `422` unknown site or kind, `502` when the portal does not answer. |
+| POST | `/projects/{id}/articles/import-cms` | editor. `{site, kind, postIds (1–10), includeImages?}` → `201 {articles: Article[], imagesImported, skipped: [{postId, reason}]}`. Each post becomes a `draft` (`generatedBy: "human"`, `reviewNote` holds the source URL) with typed blocks (paragraph, subhead, quote, question, answer, list_item); pictures become project assets tagged `cms-import`. |
+| POST | `/articles/{id}/house-style` | editor. `{apply?: false}` → `{articleId, applied, total, changes: {rule: count}, fields, article?}`. Typography only; no model. Without `apply` nothing is saved. Applying it to an approved article sends it back to review. |
 
 ## References & design profiles
 
@@ -137,7 +146,7 @@ The analysis job's `resultRef` is the design profile id.
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/projects/{id}/preflight` | Contracts built from saved pages fill `dynamic` frames (folio = page number + running text, contents = article openers), convert markup to plain text, give positional element ids a page prefix (`p3_el_body`), turn per-frame style overrides into derived paragraph styles (`PF Headline ~1`), and use master `B-Frames` (folio off) on pages that carry their own folio frame. Body: a layout contract (snake_case, `packages/contracts/layout-contract.schema.json`) or empty to check the project's saved pages. → `{checkedAt, issues: PreflightIssue[], summary: {error, warning, info, total}, notes: string[]}`. Checks: page size vs profile, numbering continuity, missing/broken assets, effective resolution (warn < 200 ppi, error < 150 ppi), empty text frames, image frames without captions on article pages, unapproved content, fonts missing from the InDesign bridge's reported list, margin violations, frames beyond bleed, **approximate** overset (ReportLab wrapping with fallback fonts — labelled approximate). Invalid contracts → `422` with schema errors. |
-| POST | `/projects/{id}/exports` | `{format, contract?, renderer?: auto\|reportlab\|indesign, force?: bool}` → `202 ExportRecord`. The contract (supplied or built from saved pages) is validated against the JSON schema first. Formats: `pdf_digital`, `pdf_print` (ReportLab preview renderer; print adds 9 pt bleed, crop marks, slug; metadata Producer/Creator say *"PressFlow preview renderer (ReportLab) — not Adobe InDesign output"*; unapproved pages are watermarked), `page_previews` (zip of PNGs), `layout_json`, `content_package` (approved articles as Markdown + JSON), `asset_archive`, `indd` (InDesign bridge only — without an online bridge the record is `status: unavailable`, `message: "InDesign bridge not connected"`; never a fake file). `pdf_print` routes to the bridge when one is online (`renderer: indesign`). Final formats (`pdf_print`, `indd`) are refused (`status: failed`) while any page is unapproved unless `force: true`. |
+| POST | `/projects/{id}/exports` | `{format, contract?, renderer?: auto\|reportlab\|indesign, force?: bool}` → `202 ExportRecord`. The contract (supplied or built from saved pages) is validated against the JSON schema first. Formats: `pdf_digital`, `pdf_print` (ReportLab preview renderer; print adds 9 pt bleed, crop marks, slug; metadata Producer/Creator say *"PressFlow preview renderer (ReportLab) — not Adobe InDesign output"*; unapproved pages are watermarked), `page_previews` (zip of PNGs), `layout_json`, `content_package` (approved articles as Markdown + JSON), `asset_archive`, `idml` (zip of `<title>.idml`, a `Links/` folder and a README, written by the API from the contract with no InDesign involved; `renderer: idml`; allowed with unapproved pages, which the README and the record's message list; never marks the project as exported), `indd` (InDesign bridge only — without an online bridge the record is `status: unavailable`, `message: "InDesign bridge not connected"`; never a fake file). `pdf_print` routes to the bridge when one is online (`renderer: indesign`). Final formats (`pdf_print`, `indd`) are refused (`status: failed`) while any page is unapproved unless `force: true`. |
 | GET | `/projects/{id}/exports` | `ExportRecord[]` |
 | GET | `/exports/{id}` | `ExportRecord` |
 | GET | `/exports/{id}/download[?file=pdf\|indd\|idml]` | authorised stream with correct `Content-Type`/`Content-Length`/`Content-Disposition` (S3: `307` presigned redirect). `409` unless `complete`. `file=` selects extra files returned by the InDesign bridge. |

@@ -23,6 +23,7 @@ import {
   RotateCcw,
   ShieldCheck,
   Shrink,
+  SpellCheck,
   Sparkles,
   Trash2,
   Type,
@@ -121,6 +122,31 @@ export default function ArticleEditorPage() {
     return result;
   };
 
+  /** Typographic corrections only (quotation marks, dashes, spacing). Deterministic; runs on the API. */
+  const houseStyle = async () => {
+    if (!apiLive) return toast.error("House style runs on the PressFlow API. Sign in to a live organisation to use it.");
+    setBusy("house_style");
+    try {
+      const preview = await live.houseStyle(article.id, false);
+      if (!preview.total) return void toast.success("Already in house style", { description: "No typographic corrections are needed." });
+      const lines = Object.entries(preview.changes).map(([rule, n]) => `${n} × ${rule}`).join(", ");
+      const warn = article.status === "approved" ? " This article is approved; changing its copy sends it back to review." : "";
+      if (!(await confirm({ title: `Apply ${preview.total} typographic correction${preview.total === 1 ? "" : "s"}?`, description: `${lines}. No words change.${warn}`, confirmLabel: "Apply house style" }))) return;
+      const done = await live.houseStyle(article.id, true);
+      if (done.article) {
+        const fresh = done.article;
+        useWorkspace.setState((s) => ({ articles: s.articles.map((a) => (a.id === fresh.id ? fresh : a)) }));
+        if (placedOn.length) setDirtySincePlacement(true);
+        setClaims(null);
+      }
+      toast.success(`${done.total} correction${done.total === 1 ? "" : "s"} applied`);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const approve = async () => {
     const result = verifyArticle(article, data.segments);
     setClaims(result);
@@ -193,6 +219,11 @@ export default function ArticleEditorPage() {
           <Button variant="secondary" size="sm" onClick={runVerify}>
             <ShieldCheck /> Verify sources
           </Button>
+          <Tooltip content="Fix quotation marks, dashes, spacing and “per cent”. No words change.">
+            <Button variant="secondary" size="sm" loading={busy === "house_style"} onClick={houseStyle}>
+              <SpellCheck /> House style
+            </Button>
+          </Tooltip>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" size="sm" disabled={article.status === "rejected"}>

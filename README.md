@@ -25,6 +25,10 @@ Built for Elets Technomedia. The demo workspace runs entirely in the browser and
 | **Preflight** (overset measured on the rendered DOM, resolution, captions, margins, numbering, approvals, fonts) | **Real.** |
 | **Exports**: layout contract JSON, content package, page previews, asset archive, browser print-to-PDF | **Real.** Generated in the browser. The contract validates against the JSON Schema. |
 | **Exports**: digital and print PDF via the API (ReportLab preview renderer, bleed and crop marks) | **Real.** The API generates it, and it is labelled as not InDesign output. |
+| **Exports**: editable InDesign package (IDML + Links) written by the API, no InDesign machine needed | **Real, structure-checked, not yet opened in InDesign.** Frames, styles, swatches, facing-page spreads and linked images are written from the layout contract and checked on every export. InDesign sets the type with its own fonts when the file is opened, so overset must be checked there. |
+| **Page versions**: in the page editor, **Versions** shows ten ready-made versions of the open page, **10 more** on request, and **Use this version** swaps one in (undoable) | **Real.** Built by the layout engine from the page's own text and the issue's own photographs: other layouts for that kind of page, mirrored, with different photographs, and with the two accent colours exchanged. It writes no copy and calls no AI model, so it is instant and needs no key. Pages with no photographs and a single layout (infographic, speaker grid) have one or two versions; advertisements have none. |
+| **Elets CMS import** (interviews, features, news and their pictures from the Elets portals, as drafts) | **Real.** Reads each portal's public WordPress API; verified against the live eGov site. Only the listed Elets hosts are ever contacted. |
+| **House typography** (quotation marks, dashes, spacing, "per cent") | **Real and deterministic.** No model involved; no word changes; previewed before it is applied. |
 | **Native INDD / PDF/X-4** via InDesign bridge (ExtendScript renderer, Python bridge, UXP panel) | **Written but untested.** InDesign wasn't available. Syntax checks and 84 unit tests pass against a mock DOM. |
 | **Transcription** (Whisper-compatible), **LLM analysis and drafting** (Anthropic / OpenAI-compatible), **Google Drive OAuth**, **YouTube Data API captions**, **S3** | **Integration code exists but is untested here.** No credentials were available. Without them the API reports "not configured" and never fakes output. |
 | **Demo workspace** (National eGovernance Summit 2026: 8 recordings, 24 speakers, 186 photographs, 18 drafts, 40 pages) | **Simulated, and labelled as such everywhere.** All people, quotations, statistics and photographs are fictional. Photographs are procedural placeholders. |
@@ -38,6 +42,20 @@ Built for Elets Technomedia. The demo workspace runs entirely in the browser and
 5. A digital PDF is rendered by the API from the browser-built contract and downloaded (40 pages).
 
 ---
+
+## What came from Magazine Autopilot
+
+PressFlow is the platform. Three parts of the earlier Magazine Autopilot pipeline were rebuilt on top of it:
+
+| Part | Where it lives now | What it adds |
+|---|---|---|
+| IDML writer | `services/api/app/services/renderers/idml_renderer.py`, export format `idml` | An editable InDesign hand-off that does not need the bridge or an InDesign licence on the server |
+| WordPress ingester | `services/api/app/services/cms_import.py`, `/api/v1/cms/*`, **Content Studio → Import from Elets CMS** | Issues are no longer limited to event recordings: published portal copy comes in as drafts and goes through the same approval |
+| Copy desk rules | `services/api/app/services/house_typography.py`, **House style** in the article editor | The typographic clean-up a sub-editor does by hand |
+
+Not carried over: the picture desk (face-aware crops, which depend on Apple Vision), the flatplan's ad-slot
+valuation, and the Adobe Firefly cloud client. PressFlow's own composer, flatplan and InDesign bridge cover the
+same ground in a different way; these remain in the Magazine Autopilot project if they are wanted later.
 
 ## Quick start: demo only (no API, no keys)
 
@@ -78,7 +96,10 @@ To regenerate the demo data the API imports, run `npm run export:demo` in `apps/
 docker compose up --build
 ```
 
-This starts Postgres, MinIO (S3), the API, a worker and the web app on :3000. See [docs/deployment.md](docs/deployment.md).
+This starts Postgres, MinIO (S3), the API, a worker and the web app on :3000, with local placeholder secrets.
+
+For a real deployment use `docker-compose.prod.yml` with `.env.production.example`, or `render.yaml`, and run
+`python -m app.checks` on the API before going live. See [docs/deployment.md](docs/deployment.md).
 
 ---
 

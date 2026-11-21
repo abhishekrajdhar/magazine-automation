@@ -6,6 +6,7 @@ layout_json             -> the validated layout contract
 content_package         -> approved articles as Markdown + JSON (zip)
 asset_archive           -> stored project assets (zip)
 indd                    -> InDesign bridge only; never faked
+idml                    -> editable InDesign package (IDML + Links) written by the API itself; no InDesign needed
 """
 
 from __future__ import annotations
@@ -26,11 +27,11 @@ from app.models import Article, Asset, Export, Project
 from app.services import serializers as ser
 from app.services.jobs.queue import JobContext, PermanentError, enqueue, register
 from app.services.project_context import asset_resolver, dump, online_bridges, placeholder_asset_ids
-from app.services.renderers import render_contract
+from app.services.renderers import render_contract, render_idml
 from app.services.storage import get_storage
 
 FILE_EXT = {"pdf_digital": ".pdf", "pdf_print": ".pdf", "indd": ".indd", "page_previews": ".zip",
-            "content_package": ".zip", "asset_archive": ".zip", "layout_json": ".json"}
+            "content_package": ".zip", "asset_archive": ".zip", "layout_json": ".json", "idml": ".zip"}
 CONTENT_TYPES = {".pdf": "application/pdf", ".zip": "application/zip", ".json": "application/json",
                  ".indd": "application/x-indesign"}
 FINAL_FORMATS = {"pdf_print", "indd"}
@@ -42,7 +43,8 @@ def slugify(s: str) -> str:
 
 def file_name_for(project: Project, fmt: str) -> str:
     suffix = {"pdf_digital": "digital", "pdf_print": "print", "indd": "indesign", "page_previews": "page-previews",
-              "content_package": "content", "asset_archive": "assets", "layout_json": "layout"}[fmt]
+              "content_package": "content", "asset_archive": "assets", "layout_json": "layout",
+              "idml": "indesign-idml"}[fmt]
     return f"{slugify(project.title)}-{suffix}{FILE_EXT[fmt]}"
 
 
@@ -50,7 +52,7 @@ def create_export(db: Session, project: Project, user_id: str, fmt: str, contrac
                   force: bool, markup: dict[str, str] | None = None) -> Export:
     # `markup` (frame id -> frontend text markup) only feeds the ReportLab preview; the contract stays plain text.
     exp = Export(id=new_id("exp"), org_id=project.org_id, project_id=project.id, format=fmt, status="queued",
-                 renderer="reportlab", file_name=file_name_for(project, fmt), contract=contract,
+                 renderer="idml" if fmt == "idml" else "reportlab", file_name=file_name_for(project, fmt), contract=contract,
                  options={"force": force, **({"markup": markup} if markup else {})}, created_by=user_id)
     db.add(exp)
     unapproved = [p["page_number"] for p in contract.get("pages", []) if not p.get("approved")]
@@ -82,6 +84,13 @@ def create_export(db: Session, project: Project, user_id: str, fmt: str, contrac
                       queue="indesign", max_attempts=2, result_ref=exp.id)
         exp.job_id = job.id
         exp.message = "Queued for the InDesign bridge"
+        return exp
+    if fmt == "idml":
+        # Written by the API from the contract. An editable working file, so unapproved pages are allowed
+        # and listed in the package's README and the export report.
+        job = enqueue(db, "export_render", {"exportId": exp.id, "renderer": "idml"}, org_id=project.org_id,
+                      result_ref=exp.id)
+        exp.job_id = job.id
         return exp
     if renderer_pref == "indesign" and fmt != "pdf_print":
         exp.status = "failed"
@@ -138,6 +147,18 @@ def run_export(ctx: JobContext) -> None:
             else:
                 data = res.pdf
             warnings = res.warnings
+        elif fmt == "idml":
+            try:
+                idml = render_idml(contract, asset_resolver(db, exp.project_id), markup=(exp.options or {}).get("markup"),
+                                   placeholders=placeholder_asset_ids(db, exp.project_id),
+                                   name=slugify(project.title if project else ""))
+            except ValueError as e:
+                raise PermanentError(str(e)) from e
+            ctx.progress(60, f"Wrote {idml.page_count} pages, {idml.frame_count} frames")
+            data = idml.package
+            warnings = idml.warnings
+            idml_note = (f"Editable IDML package: {idml.page_count} pages, {idml.frame_count} frames, "
+                         f"{idml.linked_images} linked images. Structure-checked; type is set by InDesign when opened.")
         elif fmt == "layout_json":
             data = json.dumps(contract, indent=2, ensure_ascii=False).encode("utf-8")
             warnings = []
@@ -159,6 +180,11 @@ def run_export(ctx: JobContext) -> None:
         notes = []
         if fmt in ("pdf_digital", "pdf_print", "page_previews"):
             notes.append("Preview render (ReportLab, fallback fonts) — not Adobe InDesign output.")
+        if fmt == "idml":
+            notes.append(idml_note)
+            unapproved = [p["page_number"] for p in contract.get("pages", []) if not p.get("approved")]
+            if unapproved:
+                notes.append(f"{len(unapproved)} page(s) carry unapproved content.")
         if warnings:
             notes.append(f"{len(warnings)} warning(s).")
         exp.message = " ".join(notes) or None

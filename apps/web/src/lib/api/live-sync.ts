@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import type { Article, DesignProfile, EventSession, ExtractedFact, MagazinePage, ReferencePage, Speaker } from "@/lib/domain/types";
+import type { Article, DesignProfile, EventSession, ExtractedFact, MagazinePage, Member, ReferencePage, Speaker } from "@/lib/domain/types";
 import { useWorkspace, type WorkspaceState } from "@/lib/store/workspace";
 import { apiFetch } from "./client";
 import { live } from "./live";
@@ -16,11 +16,14 @@ function replaceFor<K extends ProjectScoped>(state: WorkspaceState, key: K, proj
 }
 
 async function loadLists() {
-  const [projects, references, templates] = await Promise.all([live.listProjects(), live.listReferences(), live.listTemplates().catch(() => [])]);
+  // Members are not kept in browser storage, so they are fetched with the lists: without this a reload left the
+  // team empty and the role-gated controls (invite, role changes) disabled until the next sign-in.
+  const [projects, references, templates, members] = await Promise.all([live.listProjects(), live.listReferences(), live.listTemplates().catch(() => []), apiFetch<Member[]>("/orgs/current/members").catch(() => null)]);
   const profiles = (await Promise.all(references.filter((r) => r.designProfileId).map((r) => live.profile(r.designProfileId!).catch(() => null)))).filter((p): p is DesignProfile => !!p);
   const refPages = (await Promise.all(references.filter((r) => r.status === "analysed" || r.status === "approved").map((r) => live.referencePages(r.id).catch(() => [] as ReferencePage[])))).flat();
   const s = useWorkspace.getState();
   s.hydrateLive({
+    ...(members ? { members } : {}),
     projects,
     references,
     designProfiles: profiles,

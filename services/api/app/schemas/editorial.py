@@ -129,3 +129,66 @@ class VerificationResult(CamelModel):
 
 class RejectRequest(CamelModel):
     note: str = Field(min_length=1, max_length=4000)
+
+
+class HouseStyleRequest(CamelModel):
+    apply: bool = False  # false: report what would change; true: change the copy
+
+
+class HouseStyleResult(CamelModel):
+    article_id: ID
+    applied: bool
+    total: int
+    changes: dict[str, int]  # rule -> number of corrections
+    fields: list[str]  # article fields that change
+    article: Article | None = None
+
+
+CmsKind = Literal["interview", "government_perspective", "article", "event_report", "news", "company_profile"]
+
+
+class CmsSite(CamelModel):
+    key: str
+    name: str
+    url: str
+
+
+class CmsKindInfo(CamelModel):
+    key: CmsKind
+    label: str
+    article_type: ArticleType
+
+
+class CmsSources(CamelModel):
+    sites: list[CmsSite]
+    kinds: list[CmsKindInfo]
+
+
+class CmsPost(CamelModel):
+    id: int
+    site: str
+    kind: CmsKind
+    title: str
+    date: str
+    link: str
+    excerpt: str
+    word_count: int
+    image_url: str | None = None
+
+
+class CmsImportRequest(CamelModel):
+    site: str
+    kind: CmsKind
+    post_ids: list[int] = Field(min_length=1, max_length=10)
+    include_images: bool = True
+
+
+class CmsImportSkipped(CamelModel):
+    post_id: int
+    reason: str
+
+
+class CmsImportResult(CamelModel):
+    articles: list[Article]
+    images_imported: int
+    skipped: list[CmsImportSkipped]

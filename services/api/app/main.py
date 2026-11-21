@@ -24,7 +24,13 @@ def configure_logging() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
-    s.effective_secret_key  # fail fast in production when SECRET_KEY is missing  # noqa: B018
+    s.effective_secret_key  # fail fast in production when SECRET_KEY is missing or a placeholder  # noqa: B018
+    if s.env == "production":
+        errors, warnings = s.production_issues()
+        for msg in errors:
+            logging.getLogger("pressflow.config").error("Production configuration: %s", msg)
+        for msg in warnings:
+            logging.getLogger("pressflow.config").warning("Production configuration: %s", msg)
     load_handlers()
     if s.run_worker_inline:
         start_inline_worker()

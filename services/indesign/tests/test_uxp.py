@@ -62,7 +62,8 @@ def test_uxp_library_node_tests(tmp_path):
     env = dict(os.environ, PRESSFLOW_ZIP_FIXTURE=str(fixture), PRESSFLOW_ZIP_EXPECTED=str(expected))
     proc = subprocess.run([NODE, "--test", str(INDESIGN_DIR / "tests/js/uxp_libs.test.js")], capture_output=True, text=True, env=env, timeout=300)
     assert proc.returncode == 0, proc.stdout[-4000:] + proc.stderr[-2000:]
-    assert "# fail 0" in proc.stdout and "# skipped 0" in proc.stdout
+    # Node prints the summary as "# fail 0" (TAP, when piped on Node 22) or "ℹ fail 0" (spec reporter, newer Node).
+    assert re.search(r"^(#|ℹ) fail 0$", proc.stdout, re.M) and re.search(r"^(#|ℹ) skipped 0$", proc.stdout, re.M)
 
 
 @needs_node

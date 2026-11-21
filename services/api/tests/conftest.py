@@ -13,7 +13,8 @@ _TMP = Path(tempfile.mkdtemp(prefix="pf-test-"))
 os.environ.update({
     "ENV": "test",
     "SECRET_KEY": "test-secret-key-not-for-production-0123456789",
-    "DATABASE_URL": f"sqlite:///{_TMP / 'test.db'}",
+    # TEST_DATABASE_URL points the whole suite at another database (CI runs it again on PostgreSQL).
+    "DATABASE_URL": os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{_TMP / 'test.db'}",
     "STORAGE_BACKEND": "local",
     "STORAGE_LOCAL_ROOT": str(_TMP / "storage"),
     "RUN_WORKER_INLINE": "false",

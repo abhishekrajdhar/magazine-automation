@@ -1,10 +1,12 @@
 # Local stack: PostgreSQL + MinIO (S3) + PressFlow API + worker.
 #   docker compose up --build
-# Secrets below are local-development placeholders only.
+# Secrets below are local-development placeholders only, which is why ENV defaults to development here:
+# with ENV=production the API refuses to start on a placeholder SECRET_KEY. For a real single-host deployment
+# use docker-compose.prod.yml, which takes every secret from the environment and has no defaults.
 name: pressflow
 
 x-api-env: &api-env
-  ENV: production
+  ENV: ${ENV:-development}
   SECRET_KEY: ${SECRET_KEY:-change-me-local-dev-secret-key-0123456789}
   TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
   DATABASE_URL: postgresql://pressflow:pressflow@postgres:5432/pressflow

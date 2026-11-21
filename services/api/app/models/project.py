@@ -171,7 +171,7 @@ class Asset(TimestampMixin, Base):
     tags: Mapped[list[str]] = mapped_column(JSONType, default=list)
     caption: Mapped[str | None] = mapped_column(Text)
     credit: Mapped[str | None] = mapped_column(String(300))
-    seed: Mapped[int] = mapped_column(Integer, default=0)
+    seed: Mapped[int] = mapped_column(BigInteger, default=0)  # 32-bit hash: too big for a signed INTEGER
     storage_key: Mapped[str | None] = mapped_column(String(600))
     simulated: Mapped[bool] = mapped_column(Boolean, default=False)
 

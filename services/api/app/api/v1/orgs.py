@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select
 
+from app.config import get_settings
 from app.deps import DB, CurrentAuth, require
-from app.ids import new_id
-from app.models import Activity, Membership, User
+from app.ids import new_id, utcnow
+from app.models import Activity, Membership, PasswordResetToken, User
+from app.security import new_reset_token
+from app.services import mailer
 from app.schemas.identity import InviteMemberRequest, Member, Organisation, UpdateMemberRequest
 from app.schemas.pages import ActivityItem
 from app.services import serializers as ser
@@ -47,8 +52,21 @@ def invite_member(body: InviteMemberRequest, db: DB, ctx=require("members.manage
     db.add(ms)
     record_activity(db, org_id=ctx.org_id, actor_id=ctx.user_id, verb=f"invited {email} as {body.role}",
                     target=user.name, kind="project")
+    out = ser.member(user, ms)
+    if not user.password_hash:
+        # A new person chooses their own password through a one-time link. People who already have an account
+        # get no link (it would let an administrator reset someone else's password): they just sign in.
+        s = get_settings()
+        raw, hashed = new_reset_token()
+        db.add(PasswordResetToken(id=new_id("prt"), user_id=user.id, token_hash=hashed,
+                                  expires_at=utcnow() + timedelta(hours=s.invite_ttl_hours)))
+        out.invite_link = f"{s.frontend_url.rstrip('/')}/reset-password?token={raw}&invite=1"
+        out.invite_emailed = mailer.send(
+            email, f"{ctx.user.name} invited you to {ctx.org.name} on PressFlow",
+            f"Hello,\n\n{ctx.user.name} added you to {ctx.org.name} on PressFlow as {body.role}.\n\nChoose a password "
+            f"to get started. The link works once and expires in {s.invite_ttl_hours // 24} days.\n\n{out.invite_link}\n")
     db.commit()
-    return ser.member(user, ms)
+    return out
 
 
 @router.patch("/current/members/{user_id}", response_model=Member)

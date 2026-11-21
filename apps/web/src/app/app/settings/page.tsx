@@ -133,6 +133,7 @@ function MembersTab() {
   const mode = useWorkspace((s) => s.mode);
   const confirm = useConfirm();
   const [inviting, setInviting] = React.useState(false);
+  const [inviteLink, setInviteLink] = React.useState<{ email: string; link: string } | null>(null);
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<Role>("editor");
   const myRole = members.find((m) => m.userId === me?.id)?.role;
@@ -192,7 +193,7 @@ function MembersTab() {
       <Dialog open={inviting} onOpenChange={setInviting}>
         <DialogContent
           title="Invite a member"
-          description={mode === "demo" ? "In the demo workspace the invitation is recorded locally; no email is sent." : "Invitation emails are sent by your deployment's mail provider."}
+          description={mode === "demo" ? "In the demo workspace the invitation is recorded locally; no email is sent." : "The person gets a one-time link to choose a password: by e-mail when a mail server is configured, otherwise you pass it on."}
           footer={
             <>
               <Button variant="secondary" onClick={() => setInviting(false)}>Cancel</Button>
@@ -200,17 +201,21 @@ function MembersTab() {
                 variant="primary"
                 disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)}
                 onClick={async () => {
+                  const name = email.split("@")[0];
+                  let invite: { inviteLink?: string; inviteEmailed?: boolean } = {};
                   if (mode === "live") {
                     try {
-                      await apiFetch("/orgs/current/members", { method: "POST", json: { email, role } });
+                      // The API needs a name; the person can correct it after they join.
+                      invite = await apiFetch<{ inviteLink?: string; inviteEmailed?: boolean }>("/orgs/current/members", { method: "POST", json: { email, name, role } });
                     } catch (e) {
                       return toast.error((e as Error).message);
                     }
                   }
-                  useWorkspace.setState((s) => ({ members: [...s.members, { userId: `inv_${email}`, name: email.split("@")[0], email, role, initials: email.slice(0, 2).toUpperCase() }] }));
+                  useWorkspace.setState((s) => ({ members: [...s.members, { userId: `inv_${email}`, name, email, role, initials: email.slice(0, 2).toUpperCase() }] }));
                   setInviting(false);
                   setEmail("");
-                  toast.success("Invitation recorded", { description: mode === "demo" ? "Demo only — no email was sent." : undefined });
+                  if (invite.inviteLink && !invite.inviteEmailed) setInviteLink({ email, link: invite.inviteLink });
+                  else toast.success(invite.inviteEmailed ? "Invitation e-mailed" : "Invitation recorded", { description: mode === "demo" ? "Demo only: no email was sent." : invite.inviteEmailed ? `${email} has a link to choose a password.` : "They already have an account and can sign in to join." });
                 }}
               >
                 Invite
@@ -222,6 +227,32 @@ function MembersTab() {
             <Field label="Email" htmlFor="inv-email"><Input id="inv-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
             <Field label="Role"><Select value={role} onValueChange={setRole} options={ROLES.filter((r) => r.value !== "owner").map((r) => ({ value: r.value, label: r.label, description: r.description }))} /></Field>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!inviteLink} onOpenChange={(o) => !o && setInviteLink(null)}>
+        <DialogContent
+          title="Send this link to the new member"
+          description={`No mail server is configured, so nothing was e-mailed to ${inviteLink?.email ?? "them"}. The link lets them choose a password; it works once and is shown only now.`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setInviteLink(null)}>Done</Button>
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(inviteLink?.link ?? "");
+                    toast.success("Link copied");
+                  } catch {
+                    toast.error("Couldn't copy. Select the link and copy it by hand.");
+                  }
+                }}
+              >
+                Copy link
+              </Button>
+            </>
+          }
+        >
+          <Input readOnly value={inviteLink?.link ?? ""} onFocus={(e) => e.currentTarget.select()} aria-label="Invitation link" className="font-mono text-xs" />
         </DialogContent>
       </Dialog>
     </div>

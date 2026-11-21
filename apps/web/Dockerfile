@@ -18,4 +18,5 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=build --chown=app:app /app ./
 USER app
 EXPOSE 3000
-CMD ["npx", "next", "start", "--port", "3000"]
+# Hosts that assign the port set PORT; otherwise 3000.
+CMD ["sh", "-c", "exec npx next start --port ${PORT:-3000}"]

@@ -1,0 +1,65 @@
+# Render blueprint: PostgreSQL + API (with the job worker inside it) + web.
+#
+# Not yet exercised on Render. It encodes the same settings as docker-compose.prod.yml; after the first deploy,
+# open a shell on pressflow-api and run `python -m app.checks`.
+#
+# Values marked `sync: false` are asked for in the Render dashboard when the blueprint is created:
+#   FRONTEND_URL        the web service's public URL, e.g. https://pressflow-web.onrender.com
+#   CORS_ORIGINS        the same URL
+#   PRESSFLOW_API_URL   the API service's URL, e.g. https://pressflow-api.onrender.com
+#   S3_*                an S3-compatible bucket (AWS S3 or Cloudflare R2). Render instances have no shared disk.
+#
+# The worker runs inside the single API instance (RUN_WORKER_INLINE=true). To scale out, set it to false and add
+# a `type: worker` service with dockerCommand `python -m app.worker` and the same environment.
+databases:
+  - name: pressflow-db
+    databaseName: pressflow
+    user: pressflow
+    plan: basic-256mb
+
+envVarGroups:
+  - name: pressflow-api-env
+    envVars:
+      - {key: ENV, value: production}
+      - {key: SECRET_KEY, generateValue: true}
+      - {key: TOKEN_ENCRYPTION_KEY, sync: false}
+      - {key: COOKIE_SECURE, value: "true"}
+      - {key: FRONTEND_URL, sync: false}
+      - {key: CORS_ORIGINS, sync: false}
+      - {key: PUBLIC_API_URL, sync: false}
+      - {key: ALLOW_SIGNUP, value: "true"}
+      - {key: SIGNUP_ALLOWED_DOMAINS, sync: false}
+      - {key: STORAGE_BACKEND, value: s3}
+      - {key: S3_BUCKET, sync: false}
+      - {key: S3_ENDPOINT_URL, sync: false}
+      - {key: S3_REGION, value: us-east-1}
+      - {key: S3_ACCESS_KEY_ID, sync: false}
+      - {key: S3_SECRET_ACCESS_KEY, sync: false}
+      - {key: RUN_WORKER_INLINE, value: "true"}
+      - {key: LLM_PROVIDER, value: auto}
+      - {key: ANTHROPIC_API_KEY, sync: false}
+      - {key: OPENAI_API_KEY, sync: false}
+      - {key: TRANSCRIPTION_PROVIDER, value: none}
+      - {key: INDESIGN_BRIDGE_TOKEN, sync: false}
+
+services:
+  - type: web
+    name: pressflow-api
+    runtime: docker
+    dockerfilePath: ./services/api/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/v1/health
+    envVars:
+      - fromGroup: pressflow-api-env
+      - key: DATABASE_URL
+        fromDatabase: {name: pressflow-db, property: connectionString}
+
+  - type: web
+    name: pressflow-web
+    runtime: docker
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: ./apps/web
+    plan: starter
+    envVars:
+      - {key: PRESSFLOW_API_URL, sync: false}

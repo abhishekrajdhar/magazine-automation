@@ -39,7 +39,7 @@ export function ReferenceStep({ value, onChange, apiOnline, uploadOnly }: { valu
       const thumbs: string[] = [];
       for (let i = 1; i <= Math.min(6, doc.numPages); i += 1) thumbs.push(await renderPdfPage(doc, i, 150));
       onChange({ ...value, mode: "upload", status: "ready", fileName: meta.fileName, fileSize: meta.fileSize, file: typeof source === "string" ? undefined : source, sampleUrl: typeof source === "string" ? source : undefined, pageCount: summary.pageCount, sizeLabel: summary.sizeLabel, thumbs, libraryId: undefined, inddFile: value.inddFile });
-      await doc.destroy();
+      await doc.loadingTask.destroy(); // pdf.js 6 moved document teardown to the loading task
     } catch (err) {
       onChange({ ...value, mode: "upload", status: "error", error: `This PDF couldn't be opened (${(err as Error).message}). It may be encrypted or damaged.` });
     }

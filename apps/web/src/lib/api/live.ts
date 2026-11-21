@@ -40,6 +40,38 @@ export interface ResolvedMedia {
   isFolder?: boolean;
 }
 
+export interface CmsSources {
+  sites: { key: string; name: string; url: string }[];
+  kinds: { key: string; label: string; articleType: string }[];
+}
+
+export interface CmsPost {
+  id: number;
+  site: string;
+  kind: string;
+  title: string;
+  date: string;
+  link: string;
+  excerpt: string;
+  wordCount: number;
+  imageUrl?: string;
+}
+
+export interface CmsImportResult {
+  articles: Article[];
+  imagesImported: number;
+  skipped: { postId: number; reason: string }[];
+}
+
+export interface HouseStyleResult {
+  articleId: string;
+  applied: boolean;
+  total: number;
+  changes: Record<string, number>;
+  fields: string[];
+  article?: Article;
+}
+
 export const live = {
   resolveMedia: (url: string) => apiFetch<ResolvedMedia>("/media/resolve", { method: "POST", json: { url } }),
 
@@ -98,6 +130,11 @@ export const live = {
   article: (id: string) => apiFetch<Article>(`/articles/${id}`),
   /** Returns suggestions only; nothing is applied server-side. */
   assist: (id: string, body: { action: string; blockId?: string; tone?: string }) => apiFetch<{ action: string; blockId?: string; suggestions: string[]; provider: string; model: string }>(`/articles/${id}/assist`, { method: "POST", json: body }),
+  /** Typographic corrections only (quotes, dashes, spacing). Without `apply` it is a preview and saves nothing. */
+  houseStyle: (id: string, apply: boolean) => apiFetch<HouseStyleResult>(`/articles/${id}/house-style`, { method: "POST", json: { apply } }),
+  cmsSources: () => apiFetch<CmsSources>("/cms/sources"),
+  cmsPosts: (site: string, kind: string, search?: string) => apiFetch<CmsPost[]>(`/cms/posts?${new URLSearchParams({ site, kind, ...(search ? { search } : {}) })}`),
+  importCms: (projectId: string, body: { site: string; kind: string; postIds: number[]; includeImages: boolean }) => apiFetch<CmsImportResult>(`/projects/${projectId}/articles/import-cms`, { method: "POST", json: body }),
   approveArticle: (id: string) => apiFetch<Article>(`/articles/${id}/approve`, { method: "POST" }),
   rejectArticle: (id: string, note: string) => apiFetch<Article>(`/articles/${id}/reject`, { method: "POST", json: { note } }),
 

@@ -15,6 +15,8 @@ from app.schemas.editorial import (
     AssistRequest,
     AssistResponse,
     GenerateArticlesRequest,
+    HouseStyleRequest,
+    HouseStyleResult,
     RejectRequest,
     VerificationResult,
 )
@@ -23,6 +25,7 @@ from app.schemas.pages import JobRef
 from app.services import editorial as ed
 from app.services import serializers as ser
 from app.services.activity import record_activity, record_approval
+from app.services.house_typography import normalise_article
 from app.services.jobs.queue import enqueue
 from app.services.llm import LLMError, LLMNotConfigured, require_llm
 
@@ -95,6 +98,19 @@ def create_article(project_id: str, body: ArticleCreate, db: DB, ctx=require("co
     return ser.article(a)
 
 
+def _revoke_approval_after_edit(db, ctx, a: Article, note: str) -> None:
+    """Editing approved copy revokes approval; it must be re-approved before it can be published."""
+    if a.status != "approved":
+        return
+    a.status = "in_review"
+    a.approved_at = None
+    a.approved_by = None
+    record_approval(db, org_id=ctx.org_id, actor_id=ctx.user_id, target_kind="article", target_id=a.id,
+                    action="revoked", project_id=a.project_id, note=note)
+    for pg in db.scalars(select(MagazinePage).where(MagazinePage.article_id == a.id)):
+        pg.editorial_status = "pending"
+
+
 @router.get("/articles/{article_id}", response_model=ArticleSchema)
 def get_article_route(article_id: str, ctx: CurrentAuth, db: DB) -> ArticleSchema:
     return ser.article(get_article(db, ctx, article_id))
@@ -113,15 +129,8 @@ def update_article(article_id: str, body: ArticleUpdate, db: DB, ctx=require("co
             a.body = [b.model_dump(by_alias=True, exclude_none=True) for b in body.body or []]
         else:
             setattr(a, k, v)
-    if a.status == "approved" and CONTENT_FIELDS & data.keys():
-        # editing approved copy revokes approval; it must be re-approved before it can be published
-        a.status = "in_review"
-        a.approved_at = None
-        a.approved_by = None
-        record_approval(db, org_id=ctx.org_id, actor_id=ctx.user_id, target_kind="article", target_id=a.id,
-                        action="revoked", project_id=a.project_id, note="content edited after approval")
-        for pg in db.scalars(select(MagazinePage).where(MagazinePage.article_id == a.id)):
-            pg.editorial_status = "pending"
+    if CONTENT_FIELDS & data.keys():
+        _revoke_approval_after_edit(db, ctx, a, "content edited after approval")
     if a.generated_by == "llm" and CONTENT_FIELDS & data.keys():
         pass  # provenance of LLM drafts is kept; humans can still edit
     db.commit()
@@ -145,6 +154,26 @@ def assist(article_id: str, body: AssistRequest, db: DB, ctx=require("content.wr
     db.commit()
     return AssistResponse(action=body.action, block_id=body.block_id, suggestions=suggestions, provider=llm.name,
                           model=llm.model)
+
+
+@router.post("/articles/{article_id}/house-style", response_model=HouseStyleResult)
+def house_style(article_id: str, body: HouseStyleRequest, db: DB, ctx=require("content.write")) -> HouseStyleResult:
+    """Typographic corrections (quotation marks, dashes, spacing, the ellipsis, "per cent"). Deterministic: no
+    model is involved and no word changes. With apply=false nothing is saved and the counts are a preview."""
+    a = get_article(db, ctx, article_id)
+    changed, counts = normalise_article({"kicker": a.kicker, "headline": a.headline, "subheadline": a.subheadline,
+                                         "byline": a.byline, "intro": a.intro, "body": a.body or []})
+    applied = bool(body.apply and changed)
+    if applied:
+        for k, v in changed.items():
+            setattr(a, k, v)
+        _revoke_approval_after_edit(db, ctx, a, "house typography applied after approval")
+        record_activity(db, org_id=ctx.org_id, actor_id=ctx.user_id,
+                        verb=f"applied house typography ({sum(counts.values())} corrections)", target=a.headline,
+                        kind="article", project_id=a.project_id)
+        db.commit()
+    return HouseStyleResult(article_id=a.id, applied=applied, total=sum(counts.values()), changes=counts,
+                            fields=sorted(changed), article=ser.article(a) if applied else None)
 
 
 @router.post("/articles/{article_id}/verify", response_model=VerificationResult)

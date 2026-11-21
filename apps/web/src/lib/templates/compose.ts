@@ -17,7 +17,7 @@ import type {
   TextRole,
 } from "@/lib/domain/types";
 import { estimateWordCapacity, liveArea, snapToColumns } from "./geometry";
-import { templateSpecById, type FillKey, type SpecSlot, type TemplateSpec } from "./specs";
+import { specsForPageType, templateSpecById, type FillKey, type SpecSlot, type TemplateSpec } from "./specs";
 
 /* ------------------------------------------------------------------ */
 /* Resolved geometry                                                   */
@@ -627,7 +627,7 @@ export function composeMagazine(plan: PlanEntry[], ctx: ComposeContext): Magazin
 }
 
 /** Re-compose one article's pages in place (e.g. after a template change or text edit). */
-export function recomposeArticlePages(pages: MagazinePage[], articleId: string, ctx: ComposeContext): MagazinePage[] {
+export function recomposeArticlePages(pages: MagazinePage[], articleId: string, ctx: ComposeContext, avoidImages: Iterable<string> = []): MagazinePage[] {
   const article = ctx.articles.find((a) => a.id === articleId);
   if (!article) return pages;
   const entries = pages
@@ -637,6 +637,7 @@ export function recomposeArticlePages(pages: MagazinePage[], articleId: string, 
   if (!entries.length) return pages;
   const used = new Set<string>();
   pages.forEach((p) => p.articleId !== articleId && p.elements.forEach((e) => e.assetId && used.add(e.assetId)));
+  for (const id of avoidImages) used.add(id);
   const composed = composeArticle(article, entries, ctx, used);
   const next = [...pages];
   entries.forEach(({ index }, i) => {
@@ -650,4 +651,181 @@ export function recomposeStandalonePage(page: MagazinePage, pageNumber: number, 
   const ad = page.elements.find((e) => e.role === "ad")?.assetId;
   const composed = composeStandalone({ id: page.id, pageType: page.pageType, templateId: page.templateId, label: page.label, imageIds: keepImages.length ? keepImages : undefined, adAssetId: ad }, pageNumber, ctx, new Set());
   return { ...composed, designStatus: page.designStatus, notes: page.notes, locked: page.locked };
+}
+
+/* ------------------------------------------------------------------ */
+/* Page versions                                                       */
+/* ------------------------------------------------------------------ */
+
+/** One ready-made alternative for a page: its own text and pictures, arranged differently. */
+export interface PageVersion {
+  key: string;
+  /** The layout it uses. */
+  name: string;
+  /** What else differs from the current page, e.g. "Mirrored · new pictures". Empty when only the layout does. */
+  detail: string;
+  /** This page as it would look. */
+  page: MagazinePage;
+  /** The whole project if this version is used (an article's other pages re-flow with it). */
+  pages: MagazinePage[];
+}
+
+export interface PageVersionSource {
+  /** The next `count` versions, each different from the current page and from every version already returned. */
+  next: (count?: number) => PageVersion[];
+  /** True once every arrangement has been offered. */
+  readonly done: boolean;
+}
+
+const PICTURE_ROLES = new Set<string>(["hero_image", "image", "portrait"]);
+const isPicture = (e: PageElement) => e.kind === "image" && !!e.assetId && PICTURE_ROLES.has(e.role);
+const pictureIds = (page: MagazinePage) => page.elements.filter(isPicture).map((e) => e.assetId!);
+const lookOf = (page: MagazinePage) =>
+  JSON.stringify(page.elements.map((e) => [e.kind, e.role, Math.round(e.x), Math.round(e.y), Math.round(e.w), Math.round(e.h), e.assetId ?? "", e.text ?? "", e.fill ?? "", e.stroke ?? "", e.style?.color ?? ""]));
+
+/** Flip a page left to right. Frames inside the margins stay inside them; bleeding frames flip across the trim. */
+function mirrorPage(page: MagazinePage, pageNumber: number, profile: DesignProfile): MagazinePage {
+  const la = liveArea(profile, pageNumber);
+  const W = profile.page.widthPt;
+  const flipAlign = (a: "left" | "center" | "right" | "justify" | undefined) => (a === "left" ? "right" : a === "right" ? "left" : a);
+  return {
+    ...page,
+    elements: page.elements.map((e) => {
+      if (e.dynamic === "folio") return e;
+      const inside = e.x >= la.x - 1 && e.x + e.w <= la.x + la.w + 1;
+      const x = round(inside ? 2 * la.x + la.w - e.x - e.w : W - e.x - e.w);
+      // Short display lines follow their frame to the other side; running text keeps its alignment.
+      const display = e.kind === "text" && e.role !== "body" && e.style?.align && e.style.align !== "justify";
+      return { ...e, x, ...(display ? { style: { ...e.style, align: flipAlign(e.style!.align) } } : {}) };
+    }),
+  };
+}
+
+/** Swap the profile's two accent colours wherever the page uses them. */
+function swapAccents(page: MagazinePage, profile: DesignProfile): MagazinePage {
+  const a = profile.colors.accent.toLowerCase();
+  const b = profile.colors.accentAlt.toLowerCase();
+  if (a === b) return page;
+  const swap = (c: string | undefined) => (c?.toLowerCase() === a ? profile.colors.accentAlt : c?.toLowerCase() === b ? profile.colors.accent : c);
+  return {
+    ...page,
+    elements: page.elements.map((e) => ({
+      ...e,
+      ...(e.fill ? { fill: swap(e.fill) } : {}),
+      ...(e.stroke ? { stroke: swap(e.stroke) } : {}),
+      ...(e.style?.color ? { style: { ...e.style, color: swap(e.style.color) } } : {}),
+    })),
+  };
+}
+
+/**
+ * Versions of one page, built only from that page's own text and the issue's own photographs: every layout that
+ * suits this kind of page, each also mirrored, with other photographs, and with the two accent colours exchanged.
+ * Simple changes come first, combinations later. Nothing is written or invented, and nothing changes until a
+ * version is used. A locked page has none.
+ */
+export function createPageVersions(pages: MagazinePage[], pageId: string, ctx: ComposeContext): PageVersionSource {
+  const index = pages.findIndex((p) => p.id === pageId);
+  const page = pages[index];
+  if (!page || page.locked) return { next: () => [], done: true };
+  const pageNumber = index + 1;
+  const article = page.articleId;
+  const part = page.articlePart ?? 0;
+
+  const others = [
+    ...specsForPageType(page.pageType).filter((t) => !article || t.position === "single" || (part === 0 ? t.position === "opener" : t.position === "continuation")),
+    ...ctx.referenceTemplates.filter((t) => t.pageType === page.pageType),
+  ].filter((t) => t.id !== page.templateId);
+  const currentName = resolveTemplateName(page.templateId, ctx.referenceTemplates);
+  const layouts = [{ id: page.templateId, name: currentName }, ...others.map((t) => ({ id: t.id, name: t.name }))];
+
+  /** The project with this page on layout `templateId`, avoiding the given photographs (article pages re-flow). */
+  const compose = (templateId: string, avoid: string[]): MagazinePage[] => {
+    if (templateId === page.templateId && avoid.length === 0) return pages;
+    const swapped = pages.map((p) => (p.id === pageId ? { ...p, templateId } : p));
+    if (article) return recomposeArticlePages(swapped, article, ctx, avoid);
+    return swapped.map((p, i) => (i === index ? recomposeStandalonePage(p, pageNumber, ctx) : p));
+  };
+
+  // Photograph sets. Set 0 is what the page shows now; each later set uses photographs no earlier set used.
+  const hasPictures = pictureIds(page).length > 0 && page.pageType !== "advertisement";
+  const MAX_SETS = 6;
+  const sets: string[][] = [article ? pages.filter((p) => p.articleId === article).flatMap(pictureIds) : pictureIds(page)];
+  const placedElsewhere = new Set(pages.filter((p) => (article ? p.articleId !== article : p.id !== pageId)).flatMap(pictureIds));
+  const pictureSet = (k: number): string[] | null => {
+    while (sets.length <= k) {
+      const taken = sets.flat();
+      let nextSet: string[];
+      if (article) {
+        nextSet = compose(page.templateId, taken).filter((p) => p.articleId === article).flatMap(pictureIds).filter((id) => !taken.includes(id));
+      } else {
+        nextSet = pickFallbackImages(ctx, undefined, sets[0].length, new Set([...placedElsewhere, ...taken]));
+        if (nextSet.length < sets[0].length) nextSet = [];
+      }
+      if (nextSet.length === 0) return null;
+      sets.push(nextSet);
+    }
+    return sets[k];
+  };
+
+  // Every arrangement, simplest first: one change, then two, and so on.
+  type Combo = { layout: number; mirror: boolean; pictures: number; colours: boolean };
+  const combos: (Combo & { weight: number })[] = [];
+  for (let layout = 0; layout < layouts.length; layout++)
+    for (let pictures = 0; pictures < (hasPictures ? MAX_SETS : 1); pictures++)
+      for (const mirror of [false, true])
+        for (const colours of [false, true]) {
+          const weight = (layout ? 1 : 0) + (mirror ? 1 : 0) + (pictures ? 1 : 0) + (colours ? 1.5 : 0);
+          if (weight > 0) combos.push({ layout, mirror, pictures, colours, weight });
+        }
+  combos.sort((x, y) => x.weight - y.weight || x.pictures - y.pictures || x.layout - y.layout);
+
+  const seen = new Set([lookOf(page)]);
+  let cursor = 0;
+  const build = (c: Combo): PageVersion | null => {
+    let avoid: string[] = [];
+    if (c.pictures > 0) {
+      if (!pictureSet(c.pictures)) return null;
+      avoid = sets.slice(0, c.pictures).flat();
+    }
+    let next = article || c.layout > 0 ? compose(layouts[c.layout].id, article ? avoid : []) : pages;
+    let candidate = next[index];
+    if (!candidate || candidate.elements.length === 0) return null;
+    if (c.pictures > 0) {
+      if (article) {
+        if (pictureIds(candidate).some((id) => avoid.includes(id))) return null; // ran out of fresh photographs
+      } else {
+        const from = pictureIds(candidate);
+        const to = sets[c.pictures];
+        if (from.length === 0 || from.length > to.length) return null;
+        candidate = { ...candidate, elements: candidate.elements.map((e) => (isPicture(e) ? { ...e, assetId: to[from.indexOf(e.assetId!)], crop: undefined } : e)) };
+      }
+    }
+    if (c.mirror) candidate = mirrorPage(candidate, pageNumber, ctx.profile);
+    if (c.colours) candidate = swapAccents(candidate, ctx.profile);
+    const look = lookOf(candidate);
+    if (seen.has(look)) return null;
+    seen.add(look);
+    next = next.map((p, i) => (i === index ? candidate : p));
+    const detail = [c.mirror && "Mirrored", c.pictures > 0 && "New pictures", c.colours && "Colours swapped"].filter(Boolean).join(" · ");
+    return { key: `${layouts[c.layout].id}:${c.mirror ? 1 : 0}:${c.pictures}:${c.colours ? 1 : 0}`, name: c.layout ? layouts[c.layout].name : "Same layout", detail, page: candidate, pages: next };
+  };
+
+  return {
+    next(count = 10) {
+      const out: PageVersion[] = [];
+      while (out.length < count && cursor < combos.length) {
+        const v = build(combos[cursor++]);
+        if (v) out.push(v);
+      }
+      return out;
+    },
+    get done() {
+      return cursor >= combos.length;
+    },
+  };
+}
+
+function resolveTemplateName(templateId: string, referenceTemplates: Template[]): string {
+  return templateSpecById[templateId]?.name ?? referenceTemplates.find((t) => t.id === templateId)?.name ?? "Current layout";
 }

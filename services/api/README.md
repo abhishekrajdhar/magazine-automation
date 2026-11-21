@@ -60,7 +60,7 @@ app/
     template_specs.py templates.py page_builder.py composer.py (ports of the frontend's specs/geometry/compose)
     preflight.py contract.py exports.py reference_jobs.py integrations.py demo_import.py template_store.py ...
   contracts/         bundled copy of packages/contracts/layout-contract.schema.json (test asserts it matches)
-alembic/             migrations (0001_initial — verified on SQLite; DDL renders JSONB on PostgreSQL)
+alembic/             migrations (0001_initial, 0002_asset_seed_bigint; the suite passes on SQLite and PostgreSQL 16)
 scripts/             seed.py, make_sample_reference.py
 tests/               pytest suite + fixtures/sample-reference.pdf
 ```
@@ -80,7 +80,9 @@ tests/               pytest suite + fixtures/sample-reference.pdf
 | Storage | `STORAGE_BACKEND=local` (default) or `s3` (`--extra s3`, `S3_*`; MinIO via `S3_ENDPOINT_URL`) | — |
 | PostgreSQL | `DATABASE_URL=postgresql://…` (`--extra postgres`, psycopg 3) | SQLite |
 | InDesign bridge | `INDESIGN_BRIDGE_TOKEN` shared with `services/indesign`; bridge heartbeats every < 120 s | `indd` exports → `unavailable` ("InDesign bridge not connected") |
-| E-mail | integration boundary: dev logs password-reset links (`EMAIL_BACKEND=log`) | links logged, never returned by the API |
+| E-mail | `EMAIL_BACKEND=smtp` + `SMTP_*` sends password-reset and invitation links | dev (`log`): links written to the server log. Otherwise nothing is sent; an invitation link is returned once to the inviting administrator |
+| Elets CMS import | none (public WordPress API of the Elets portals) | `502` with the portal's answer when it cannot be reached |
+| IDML export | none (written by the API) | — |
 
 Secrets: `SECRET_KEY` and `TOKEN_ENCRYPTION_KEY` are required when `ENV=production` (the API refuses to start /
 encrypt without them). In development a key is generated into `var/dev-secret.key`.
@@ -101,6 +103,12 @@ Verified here (tests + manual `curl` against a running server):
 - Job queue retries/backoff/permanent failure; upload of real audio + ffprobe; pipeline `unavailable` paths.
 - YouTube oEmbed metadata (real network call) and integration status checks (ffmpeg, storage, DB, oEmbed).
 - Anthropic provider request shape/parsing against a mocked HTTP transport (no real API call).
+
+- IDML export from both API-built and browser-built contracts (structure check on every export; frame geometry
+  compared against the PDF preview), CMS import against the live eGov portal, house typography, sign-up
+  restriction, failed-login lock, invitation links, `python -m app.checks`.
+
+Not verified: an IDML package opened in Adobe InDesign, SMTP delivery against a real mail server.
 
 **Untested (no credentials available in this environment):** real Anthropic / OpenAI-compatible calls (article
 generation, assist, transcript analysis, vision refinement), Whisper transcription, YouTube Data API key and

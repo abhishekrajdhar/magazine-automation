@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from . import (
     auth,
+    cms,
     editorial,
     exports,
     health,
@@ -19,6 +20,6 @@ from . import (
 )
 
 api_router = APIRouter(prefix="/api/v1")
-for module in (health, auth, orgs, projects, media, references, profiles, editorial, planner, templates, preflight,
+for module in (health, auth, orgs, projects, media, references, profiles, editorial, cms, planner, templates, preflight,
                exports, jobs, integrations, indesign_bridge):
     api_router.include_router(module.router)

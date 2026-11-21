@@ -91,7 +91,7 @@ ArticleType = Literal[
 ARTICLE_TYPES: tuple[str, ...] = ArticleType.__args__  # type: ignore[attr-defined]
 
 Severity = Literal["error", "warning", "info"]
-ExportFormat = Literal["pdf_digital", "pdf_print", "indd", "page_previews", "content_package", "asset_archive", "layout_json"]
+ExportFormat = Literal["pdf_digital", "pdf_print", "indd", "page_previews", "content_package", "asset_archive", "layout_json", "idml"]
 ExportRenderer = Literal["browser", "reportlab", "indesign"]
 
 

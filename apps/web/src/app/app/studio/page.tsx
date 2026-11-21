@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CircleAlert, CircleCheck, FileText, Info, NotebookPen, Search, Sparkles } from "lucide-react";
+import { ArrowRight, CircleAlert, CircleCheck, FileText, Info, Newspaper, NotebookPen, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/store/workspace";
 import { useProjectData } from "@/lib/store/hooks";
@@ -18,6 +18,8 @@ import { generationBlocker } from "@/lib/editorial/generation";
 import { claimSummary, verifyArticle } from "@/lib/editorial/verify";
 import { useApiStatus, integration } from "@/lib/api/use-api-status";
 import { live } from "@/lib/api/live";
+import { loadWorkspace } from "@/lib/api/live-sync";
+import { CmsImportDialog } from "@/components/studio/cms-import-dialog";
 import { formatRelative, wordCount } from "@/lib/utils/format";
 import { GenerationStatus, useGenerationJobs } from "./generation-status";
 
@@ -34,6 +36,7 @@ function Studio() {
   const [type, setType] = React.useState<"all" | ArticleType>("all");
   const [query, setQuery] = React.useState("");
   const [generating, setGenerating] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
 
   const verification = React.useMemo(() => Object.fromEntries(articles.map((a) => [a.id, claimSummary(verifyArticle(a, segments))])), [articles, segments]);
   const matchesView = (s: ArticleStatus) =>
@@ -49,11 +52,16 @@ function Studio() {
     <div className="mx-auto max-w-[1280px] px-6 py-7">
       <PageHeader
         title="Content Studio"
-        description="Articles drafted from approved facts. Nothing reaches a page in final output until an editor approves it."
+        description="Articles drafted from approved facts or imported from the Elets portals. Nothing reaches a page in final output until an editor approves it."
         actions={
-          <Button variant="primary" onClick={() => setGenerating(true)}>
-            <Sparkles /> Generate articles
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              <Newspaper /> Import from Elets CMS
+            </Button>
+            <Button variant="primary" onClick={() => setGenerating(true)}>
+              <Sparkles /> Generate articles
+            </Button>
+          </>
         }
       />
 
@@ -148,6 +156,8 @@ function Studio() {
           </Table>
         </Panel>
       )}
+
+      <CmsImportDialog open={importing} onOpenChange={setImporting} projectId={project.id} available={mode === "live" && api.online} onImported={() => loadWorkspace(project.id)} />
 
       <GenerateDialog
         open={generating}

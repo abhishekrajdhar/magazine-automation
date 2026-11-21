@@ -51,6 +51,10 @@ export async function requestPasswordReset(email: string) {
   await apiFetch("/auth/forgot-password", { method: "POST", json: { email } });
 }
 
+export async function resetPassword(token: string, password: string) {
+  await apiFetch("/auth/reset-password", { method: "POST", json: { token, password } });
+}
+
 export async function signOutEverywhere() {
   const mode = useWorkspace.getState().mode;
   if (mode === "live") await apiFetch("/auth/logout", { method: "POST" }).catch(() => undefined);

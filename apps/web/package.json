@@ -22,8 +22,8 @@
     "jszip": "3.10.1",
     "lucide-react": "1.66.0",
     "motion": "12.43.0",
-    "next": "16.4.3",
-    "pdfjs-dist": "5.7.284",
+    "next": "16.4.6",
+    "pdfjs-dist": "6.5.438",
     "radix-ui": "1.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -39,6 +39,6 @@
     "tailwindcss": "4.3.3",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.12"
   }
 }

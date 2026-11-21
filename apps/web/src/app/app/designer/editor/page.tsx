@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, ChevronLeft, ChevronRight, Columns2, Download, Eye, Frame, Grid3x3, Image as ImageIcon, Layers, LayoutTemplate, Lock, PanelsTopLeft, Redo2, Save, Undo2, ZoomIn, ZoomOut } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Columns2, Download, Eye, Frame, Grid3x3, Image as ImageIcon, Layers, LayoutTemplate, Lock, PanelsTopLeft, Redo2, Save, Sparkles, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/store/workspace";
 import { useProjectData } from "@/lib/store/hooks";
@@ -21,6 +21,7 @@ import { TemplatePreview } from "@/components/designer/template-preview";
 import { designStatus } from "@/lib/domain/status";
 import type { Asset, DesignStatus, PageElement } from "@/lib/domain/types";
 import { specsForPageType } from "@/lib/templates/specs";
+import type { PageVersion, PageVersionSource } from "@/lib/templates/compose";
 import { pageTypeLabel } from "@/lib/templates/derive";
 import { live } from "@/lib/api/live";
 import { AddImages, aspectFor } from "@/components/media/add-images";
@@ -39,6 +40,8 @@ function Editor() {
   const addElement = useWorkspace((s) => s.addElement);
   const removeElement = useWorkspace((s) => s.removeElement);
   const changeTemplate = useWorkspace((s) => s.changeTemplate);
+  const versionsOf = useWorkspace((s) => s.versionsOf);
+  const applyVersion = useWorkspace((s) => s.applyVersion);
   const pushHistory = useWorkspace((s) => s.pushHistory);
   const undo = useWorkspace((s) => s.undo);
   const redo = useWorkspace((s) => s.redo);
@@ -58,6 +61,28 @@ function Editor() {
   const [cropping, setCropping] = React.useState<string | null>(null);
   const [overset, setOverset] = React.useState<Record<string, boolean>>({});
   const [picker, setPicker] = React.useState<null | "replace" | "add">(null);
+  const [versionsOpen, setVersionsOpen] = React.useState(false);
+  const versionSource = React.useRef<PageVersionSource | null>(null);
+  const [versions, setVersions] = React.useState<PageVersion[]>([]);
+  const [chosen, setChosen] = React.useState<PageVersion | null>(null);
+  const [noMoreVersions, setNoMoreVersions] = React.useState(false);
+  const openVersions = () => {
+    if (!pageId) return;
+    // Built from the page as it is at this moment.
+    const source = versionsOf(pageId);
+    versionSource.current = source;
+    setVersions(source.next(10));
+    setNoMoreVersions(source.done);
+    setChosen(null);
+    setVersionsOpen(true);
+  };
+  const moreVersions = () => {
+    const source = versionSource.current;
+    if (!source) return;
+    const more = source.next(10);
+    setVersions((v) => [...v, ...more]);
+    setNoMoreVersions(source.done || more.length === 0);
+  };
   const [reader, setReader] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const stage = React.useRef<HTMLDivElement>(null);
@@ -252,6 +277,11 @@ function Editor() {
             </Badge>
           )}
           {page.editorialStatus !== "approved" && <Badge tone="warning" dot>Copy not approved</Badge>}
+          <Tooltip content="See this page arranged in other ways">
+            <Button variant="ghost" size="sm" onClick={openVersions}>
+              <Sparkles /> Versions
+            </Button>
+          </Tooltip>
           <Button variant="ghost" size="sm" onClick={() => setReader(true)}>
             <Eye /> Preview
           </Button>
@@ -452,8 +482,92 @@ function Editor() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
+        <DialogContent
+          title={`Versions of page ${index + 1}`}
+          description={`The same text and the issue's own photographs, arranged in different ways. Pick the one you like${page.articleId ? "; the rest of the article re-flows to match" : ""}.`}
+          size="xl"
+          className="top-[6vh] max-h-[88vh] max-w-[1080px]"
+          footer={
+            versions.length > 0 ? (
+              <div className="flex w-full items-center gap-3">
+                <Button variant="secondary" disabled={noMoreVersions} onClick={moreVersions}>
+                  <Sparkles /> {noMoreVersions ? "No more versions" : "10 more"}
+                </Button>
+                <span className="text-xs text-ink-3">{versions.length} shown</span>
+                <Button
+                  variant="primary"
+                  className="ml-auto"
+                  disabled={!chosen}
+                  onClick={() => {
+                    if (!chosen) return;
+                    applyVersion(project.id, chosen.pages);
+                    setSelectedId(null);
+                    setVersionsOpen(false);
+                    toast.success(`Page ${index + 1} replaced with the version you chose`, { action: { label: "Undo", onClick: () => undo(project.id) } });
+                  }}
+                >
+                  Use this version
+                </Button>
+              </div>
+            ) : undefined
+          }
+        >
+          {page.locked ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-sm text-ink-3">This page is locked, so it cannot be changed. Unlock it to see other versions.</p>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  updatePage(page.id, { locked: false });
+                  // The store updates synchronously, so the versions can be built straight away.
+                  openVersions();
+                }}
+              >
+                <Lock /> Unlock and show versions
+              </Button>
+            </div>
+          ) : versions.length === 0 ? (
+            <p className="py-8 text-center text-sm text-ink-3">This page has only one arrangement: it has no photographs to change and one layout for its kind.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 p-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              <VersionCard name="Current page" detail="As it is now" current>
+                <PageThumb page={page} profile={profile} assets={assetsById} ctx={data.ctxFor(index)} width={176} localUrls={data.localUrls} />
+              </VersionCard>
+              {versions.map((v, i) => (
+                <VersionCard key={v.key} name={`${i + 1}. ${v.name}`} detail={v.detail || "Different layout"} chosen={chosen?.key === v.key} onChoose={() => setChosen(v)}>
+                  <PageThumb page={v.page} profile={profile} assets={assetsById} ctx={data.ctxFor(index)} width={176} localUrls={data.localUrls} />
+                </VersionCard>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <MagazineReader open={reader} onOpenChange={setReader} startIndex={index} />
     </div>
+  );
+}
+
+function VersionCard({ name, detail, current, chosen, onChoose, children }: { name: string; detail: string; current?: boolean; chosen?: boolean; onChoose?: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      disabled={current}
+      onClick={onChoose}
+      aria-pressed={current ? undefined : !!chosen}
+      aria-label={current ? "Current page" : `Version ${name}${detail ? `, ${detail}` : ""}`}
+      className={cn(
+        "flex flex-col items-center gap-2 rounded-lg border p-2 text-left transition-colors",
+        current ? "border-dashed border-line-strong bg-sunken" : chosen ? "border-accent bg-accent-soft ring-2 ring-accent" : "border-line hover:border-accent",
+      )}
+    >
+      <span className="pointer-events-none block">{children}</span>
+      <span className="w-full px-0.5">
+        <span className="block truncate text-xs font-medium">{name}</span>
+        <span className="block truncate text-[11px] text-ink-3">{detail}</span>
+      </span>
+    </button>
   );
 }
 

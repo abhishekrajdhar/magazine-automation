@@ -22,4 +22,5 @@ USER pressflow
 
 EXPOSE 8000
 # API: migrate then serve. The worker service overrides the command with `python -m app.worker`.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+# Hosts that assign the port (Render, Cloud Run, Heroku-style) set PORT; otherwise 8000.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]

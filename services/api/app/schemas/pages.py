@@ -202,9 +202,9 @@ ExportStatus = Literal["queued", "running", "complete", "failed", "unavailable"]
 class ExportRecord(CamelModel):
     id: ID
     project_id: ID
-    format: Literal["pdf_digital", "pdf_print", "indd", "page_previews", "content_package", "asset_archive", "layout_json"]
+    format: Literal["pdf_digital", "pdf_print", "indd", "page_previews", "content_package", "asset_archive", "layout_json", "idml"]
     status: ExportStatus
-    renderer: Literal["browser", "reportlab", "indesign"]
+    renderer: Literal["browser", "reportlab", "indesign", "idml"]
     file_name: str
     size_bytes: int | None = None
     created_at: ISODate
@@ -215,7 +215,7 @@ class ExportRecord(CamelModel):
 
 
 class ExportCreateRequest(CamelModel):
-    format: Literal["pdf_digital", "pdf_print", "indd", "page_previews", "content_package", "asset_archive", "layout_json"]
+    format: Literal["pdf_digital", "pdf_print", "indd", "page_previews", "content_package", "asset_archive", "layout_json", "idml"]
     contract: dict | None = None
     renderer: Literal["reportlab", "indesign", "auto"] = "auto"
     force: bool = False  # render pages whose content is not approved (watermarked)

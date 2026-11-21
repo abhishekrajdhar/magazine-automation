@@ -43,5 +43,4 @@ Demo mode needs only the web app; live steps need the API running.
 ## Not covered (needs external services)
 
 - Real LLM, Whisper, Google OAuth / Drive, YouTube Data API and S3 calls. These are only exercised against mocks or "not configured" paths.
-- PostgreSQL at runtime. Migrations were rendered offline; tests run on SQLite.
 - Any run inside Adobe InDesign or InDesign Server.

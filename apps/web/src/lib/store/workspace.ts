@@ -28,9 +28,11 @@ import type {
 import { buildDemoSeed, DEMO_SEED_VERSION, type ProjectSummary } from "@/lib/demo/workspace";
 import {
   composeMagazine,
+  createPageVersions,
   recomposeArticlePages,
   recomposeStandalonePage,
   type ComposeContext,
+  type PageVersionSource,
   type PlanEntry,
 } from "@/lib/templates/compose";
 import { uid } from "@/lib/utils/format";
@@ -117,6 +119,10 @@ interface Actions {
   duplicatePage: (pageId: string) => void;
   removePage: (pageId: string) => void;
   changeTemplate: (pageId: string, templateId: string) => void;
+  /** Ready-made alternatives for one page (see `createPageVersions`); computed on request, never stored. */
+  versionsOf: (pageId: string) => PageVersionSource;
+  /** Use one of them. Undoable. */
+  applyVersion: (projectId: string, pages: MagazinePage[]) => void;
   assignArticle: (pageId: string, articleId: string | undefined) => void;
   reflowArticle: (articleId: string) => void;
   regeneratePages: (projectId: string, plan: PlanEntry[]) => void;
@@ -445,6 +451,17 @@ export const useWorkspace = create<WorkspaceState>()(
             const index = pagesOf(page.projectId).findIndex((p) => p.id === pageId);
             set({ pages: replace(get().pages, pageId, recomposeStandalonePage(updated, index + 1, ctx)) });
           }
+        },
+        versionsOf: (pageId) => {
+          const s = get();
+          const page = s.pages.find((p) => p.id === pageId);
+          const ctx = page && composeContextFor(s, page.projectId);
+          return page && ctx ? createPageVersions(pagesOf(page.projectId), pageId, ctx) : { next: () => [], done: true };
+        },
+        applyVersion: (projectId, pages) => {
+          snapshot(projectId);
+          replaceProjectPages(projectId, pages);
+          touchProject(projectId);
         },
         assignArticle: (pageId, articleId) => {
           const s = get();

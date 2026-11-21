@@ -6,7 +6,7 @@ import logging
 import re
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -23,6 +23,7 @@ from app.schemas.identity import (
     SignupRequest,
 )
 from app.security import create_session_token, dummy_verify, hash_password, hash_reset_token, new_reset_token, verify_password
+from app.services import login_throttle, mailer
 from app.services import serializers as ser
 from app.services.activity import record_activity
 
@@ -49,6 +50,13 @@ def _slug(db, name: str) -> str:
 @router.post("/signup", response_model=SessionResponse, status_code=201)
 def signup(body: SignupRequest, response: Response, db: DB) -> SessionResponse:
     email = body.email.lower()
+    s = get_settings()
+    if not s.allow_signup:
+        raise HTTPException(status_code=403, detail="Sign-up is closed on this deployment. Ask an administrator of "
+                                                    "your organisation for an invitation.")
+    domains = [d.lower().lstrip("@") for d in s.signup_allowed_domains]
+    if domains and email.rsplit("@", 1)[-1] not in domains:
+        raise HTTPException(status_code=403, detail="Sign-up is limited to " + ", ".join(domains) + " e-mail addresses.")
     existing = db.scalar(select(User).where(User.email == email))
     if existing is not None and existing.password_hash:
         raise HTTPException(status_code=409, detail="An account with this e-mail already exists. Sign in instead.")
@@ -76,13 +84,23 @@ def signup(body: SignupRequest, response: Response, db: DB) -> SessionResponse:
 
 
 @router.post("/login", response_model=SessionResponse)
-def login(body: LoginRequest, response: Response, db: DB) -> SessionResponse:
-    user = db.scalar(select(User).where(User.email == body.email.lower()))
+def login(body: LoginRequest, request: Request, response: Response, db: DB) -> SessionResponse:
+    email = body.email.lower()
+    address = request.client.host if request.client else None
+    wait = login_throttle.retry_after(email, address)
+    if wait:
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in "
+                                                    f"{max(1, round(wait / 60))} minute(s), or reset the password.",
+                            headers={"Retry-After": str(wait)})
+    user = db.scalar(select(User).where(User.email == email))
     if user is None:
         dummy_verify(body.password)
+        login_throttle.record_failure(email, address)
         raise HTTPException(status_code=401, detail="Incorrect e-mail or password.")
     if not verify_password(body.password, user.password_hash):
+        login_throttle.record_failure(email, address)
         raise HTTPException(status_code=401, detail="Incorrect e-mail or password.")
+    login_throttle.record_success(email)
     memberships = list(db.scalars(select(Membership).where(Membership.user_id == user.id)).all())
     active = [m for m in memberships if m.status == "active"]
     invited = [m for m in memberships if m.status == "invited"]
@@ -124,11 +142,10 @@ def forgot_password(body: ForgotPasswordRequest, db: DB) -> OkResponse:
                                   expires_at=utcnow() + timedelta(minutes=s.password_reset_ttl_minutes)))
         db.commit()
         link = f"{s.frontend_url.rstrip('/')}/reset-password?token={raw}"
-        if s.email_backend == "log" and s.env != "production":
-            # E-mail delivery is an integration boundary; in development the link is logged, never returned.
-            log.warning("Password reset link for %s (dev log only): %s", user.email, link)
-        else:
-            log.info("Password reset requested for user %s; e-mail delivery not configured.", user.id)
+        # Sent by SMTP when configured; in development the message is logged. The link is never returned here.
+        mailer.send(user.email, "Reset your PressFlow password",
+                    f"Hello {user.name},\n\nUse this link to choose a new password. It works once and expires in "
+                    f"{s.password_reset_ttl_minutes} minutes.\n\n{link}\n\nIf you didn't ask for this, ignore this e-mail.\n")
     return OkResponse(message="If an account exists for that e-mail, a reset link has been sent.")
 
 

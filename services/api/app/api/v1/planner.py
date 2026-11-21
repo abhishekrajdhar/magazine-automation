@@ -54,19 +54,25 @@ def put_pages(project_id: str, body: PagesPutRequest, db: DB, ctx=require("desig
     for pos, pg in enumerate(body.pages):
         if pg.article_id and pg.article_id not in articles:
             raise HTTPException(status_code=422, detail=f"Page {pos + 1}: articleId does not belong to this project")
-        if pg.id and pg.id in locked:
-            row = locked[pg.id]
-            row.position = pos  # locked pages keep their content but follow the new order
-            preserved.append(row.id)
-            continue
         status = pg.editorial_status
         if status == "approved" and pg.article_id and pg.article_id not in approved_articles:
             status = "pending"  # cannot mark a page approved when its article is not approved
-        db.add(MagazinePage(
-            id=pg.id if (pg.id and pg.id not in locked) else new_id("pg"), project_id=p.id, position=pos,
-            page_type=pg.page_type, template_id=pg.template_id, label=pg.label, article_id=pg.article_id,
+        values = dict(
+            position=pos, page_type=pg.page_type, template_id=pg.template_id, label=pg.label, article_id=pg.article_id,
             article_part=pg.article_part, elements=[e.model_dump(by_alias=True, exclude_none=True) for e in pg.elements],
-            editorial_status=status, design_status=pg.design_status, locked=pg.locked, notes=pg.notes))
+            editorial_status=status, design_status=pg.design_status, locked=pg.locked, notes=pg.notes)
+        if pg.id and pg.id in locked:
+            row = locked[pg.id]
+            if pg.locked:
+                row.position = pos  # locked pages keep their content but follow the new order
+                preserved.append(row.id)
+            else:
+                # Sent unlocked: the designer unlocked it, so it is saved like any other page. Without this a page
+                # locked once could never be unlocked again, because the lock itself was part of the kept content.
+                for key, value in values.items():
+                    setattr(row, key, value)
+            continue
+        db.add(MagazinePage(id=pg.id or new_id("pg"), project_id=p.id, **values))
     if p.status in ("setup", "ingesting", "analysing", "editorial"):
         p.status = "design"
     record_activity(db, org_id=ctx.org_id, actor_id=ctx.user_id, verb=f"saved {len(body.pages)} pages", target=p.title,

@@ -9,3 +9,5 @@ __pycache__
 .env
 .env.local
 .claude/
+.env.production
+.env.*.local

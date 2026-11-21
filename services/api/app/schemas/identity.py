@@ -32,6 +32,10 @@ class Member(CamelModel):
     last_active_at: ISODate | None = None
     # Additive (not in types.ts): "invited" until the person sets a password.
     status: Literal["active", "invited"] = "active"
+    # Only on the response to an invitation, for a person who has no password yet: the link where they choose one.
+    # The administrator passes it on when no mail server is configured (invite_emailed says whether one was sent).
+    invite_link: str | None = None
+    invite_emailed: bool | None = None
 
 
 class SignupRequest(CamelModel):

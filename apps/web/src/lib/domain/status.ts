@@ -68,6 +68,7 @@ export const exportFormatInfo: Record<ExportFormat, { label: string; ext: string
   pdf_digital: { label: "PDF for digital publishing", ext: "pdf", description: "RGB, web-optimised, no bleed. Rendered by the preview renderer — not InDesign." },
   pdf_print: { label: "Print-ready PDF", ext: "pdf", description: "Bleed and crop marks. PDF/X-4 output requires the InDesign bridge." },
   indd: { label: "Native InDesign document", ext: "indd", description: "Editable .indd built by Adobe InDesign from approved templates." },
+  idml: { label: "Editable InDesign package (IDML)", ext: "zip", description: "Live frames, styles, swatches and linked images, written by PressFlow without InDesign. Opens in InDesign as an editable document; type is set there with your fonts." },
   page_previews: { label: "Individual page previews", ext: "zip", description: "One self-contained preview per page." },
   content_package: { label: "Article content package", ext: "zip", description: "Approved articles as Markdown and JSON with source timestamps." },
   asset_archive: { label: "Magazine asset archive", ext: "zip", description: "Photographs and creatives placed in the issue, with a manifest." },

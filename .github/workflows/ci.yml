@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (SQLite + PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pressflow
+          POSTGRES_PASSWORD: pressflow
+          POSTGRES_DB: pressflow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pressflow" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: uv sync --extra postgres --extra s3
+      - name: Tests on SQLite
+        run: uv run pytest
+      - name: Tests on PostgreSQL (real migration, real queue locking)
+        env:
+          TEST_DATABASE_URL: postgresql://pressflow:pressflow@localhost:5432/pressflow
+        run: uv run pytest
+
+  web:
+    name: Web (types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npx next build
+
+  indesign:
+    name: InDesign scripts and bridge (mock DOM)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/indesign
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: make check
+
+  images:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f services/api/Dockerfile -t pressflow-api .
+      - run: docker build -f apps/web/Dockerfile -t pressflow-web apps/web
+      - name: API image starts and refuses a placeholder secret in production
+        run: |
+          ! docker run --rm -e ENV=production -e SECRET_KEY=change-me pressflow-api python -c "from app.config import get_settings; get_settings().effective_secret_key"
+          docker run --rm pressflow-api python -c "import app.main, app.services.renderers.idml_renderer, app.services.cms_import; print('imports ok')"

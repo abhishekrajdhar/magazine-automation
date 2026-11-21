@@ -125,6 +125,17 @@ def test_full_reference_to_export_flow(client, owner):
     client.put(f"/api/v1/projects/{proj['id']}/pages", headers=h, json={"pages": saved})
     drop = client.put(f"/api/v1/projects/{proj['id']}/pages", headers=h, json={"pages": saved[1:]})
     assert drop.status_code == 409
+    # while locked its content is kept whatever is sent; sent unlocked, it is saved again like any other page
+    edited = [dict(saved[0], label="Changed while locked"), *saved[1:]]
+    kept = client.put(f"/api/v1/projects/{proj['id']}/pages", headers=h, json={"pages": edited}).json()
+    assert kept["preservedLocked"] == [saved[0]["id"]] and kept["pages"][0]["label"] == saved[0]["label"]
+    unlocked = [dict(saved[0], locked=False, label="Changed after unlocking"), *saved[1:]]
+    freed = client.put(f"/api/v1/projects/{proj['id']}/pages", headers=h, json={"pages": unlocked}).json()
+    assert freed["preservedLocked"] == [] and freed["pages"][0]["locked"] is False
+    assert freed["pages"][0]["label"] == "Changed after unlocking" and freed["pages"][0]["id"] == saved[0]["id"]
+    assert len(client.get(f"/api/v1/projects/{proj['id']}/pages", headers=h).json()) == 12
+    saved[0]["locked"] = False
+    client.put(f"/api/v1/projects/{proj['id']}/pages", headers=h, json={"pages": saved})
 
     # preflight of current pages
     pf = client.post(f"/api/v1/projects/{proj['id']}/preflight", headers=h)

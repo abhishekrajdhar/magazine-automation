@@ -45,7 +45,7 @@ export default function ForgotPasswordPage() {
           <MailCheck className="size-5 text-success" />
           <p className="mt-3 text-sm font-medium">Request received</p>
           <p className="mt-1 text-sm text-ink-3">
-            If an account exists for <span className="font-medium text-ink-2">{email}</span>, a reset link has been issued. Email delivery depends on your deployment&apos;s mail provider; in local development the link is written to the API log.
+            If an account exists for <span className="font-medium text-ink-2">{email}</span>, a reset link has been sent to it. If nothing arrives, this deployment may have no mail server: ask an administrator of your organisation.
           </p>
         </div>
       ) : (

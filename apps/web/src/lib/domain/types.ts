@@ -618,12 +618,13 @@ export type ExportFormat =
   | "pdf_digital"
   | "pdf_print"
   | "indd"
+  | "idml"
   | "page_previews"
   | "content_package"
   | "asset_archive"
   | "layout_json";
 
-export type ExportRenderer = "browser" | "reportlab" | "indesign";
+export type ExportRenderer = "browser" | "reportlab" | "indesign" | "idml";
 
 export interface ExportRecord {
   id: ID;

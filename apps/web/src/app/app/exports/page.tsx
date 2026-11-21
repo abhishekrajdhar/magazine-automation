@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { BookOpenCheck, CircleAlert, CircleCheck, Download, FileArchive, FileJson, FileText, Images, Loader2, NotebookPen, PackageCheck, Printer, ShieldCheck, TriangleAlert } from "lucide-react";
+import { BookOpenCheck, Boxes, CircleAlert, CircleCheck, Download, FileArchive, FileJson, FileText, Images, Loader2, NotebookPen, PackageCheck, Printer, ShieldCheck, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/store/workspace";
 import { useProjectData } from "@/lib/store/hooks";
@@ -24,13 +24,14 @@ const ICONS: Record<ExportFormat, React.ReactNode> = {
   pdf_digital: <FileText />,
   pdf_print: <Printer />,
   indd: <BookOpenCheck />,
+  idml: <Boxes />,
   page_previews: <Images />,
   content_package: <NotebookPen />,
   asset_archive: <FileArchive />,
   layout_json: <FileJson />,
 };
 
-const RENDERER_LABEL: Record<ExportRenderer, string> = { browser: "Browser", reportlab: "API · ReportLab", indesign: "Adobe InDesign" };
+const RENDERER_LABEL: Record<ExportRenderer, string> = { browser: "Browser", reportlab: "API · ReportLab", indesign: "Adobe InDesign", idml: "API · IDML writer" };
 const FINAL: ExportFormat[] = ["pdf_print", "indd"];
 
 export default function ExportsPage() {
@@ -85,6 +86,9 @@ export default function ExportsPage() {
       case "indd":
         if (!bridgeOnline) return { renderer: "indesign", available: false, reason: apiLive ? "No InDesign bridge is connected. Native .indd files are only produced by Adobe InDesign." : "Needs the PressFlow API and a connected InDesign bridge. Native .indd files are only produced by Adobe InDesign." };
         return { renderer: "indesign", available: !blocked, reason: blocked ? "Complete the approval checklist first." : undefined };
+      case "idml":
+        if (!apiLive) return { renderer: "idml", available: false, reason: "Needs the PressFlow API, which writes the IDML package from the layout contract. No InDesign machine is required." };
+        return { renderer: "idml", available: true, reason: "A working file for designers: open it in InDesign, check for overset text, then save as .indd." };
       case "page_previews":
       case "asset_archive":
         return { renderer: apiLive ? "reportlab" : "browser", available: true };
@@ -125,7 +129,7 @@ export default function ExportsPage() {
     const contract = buildLayoutContract({ ...exportData, assets: data.assetsById });
     const rec = await live.createExport(project.id, format, contract);
     addExport(rec);
-    toast.success(`${exportFormatInfo[format].label} queued`, { description: renderer === "indesign" ? "The InDesign bridge will pick it up." : "Rendering on the API." });
+    toast.success(`${exportFormatInfo[format].label} queued`, { description: renderer === "indesign" ? "The InDesign bridge will pick it up." : renderer === "idml" ? "Writing the package on the API." : "Rendering on the API." });
     const started = Date.now();
     for (;;) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -229,7 +233,7 @@ export default function ExportsPage() {
           <Panel className="p-4 text-xs leading-relaxed text-ink-3">
             <p className="font-medium text-ink-2">About renderers</p>
             <p className="mt-1">
-              <strong>Browser</strong> and <strong>ReportLab</strong> outputs come from PressFlow&apos;s preview renderers using substitute fonts. Only <strong>Adobe InDesign</strong>, via the bridge, produces native .indd files and PDF/X-4 print files with your licensed fonts.{" "}
+              <strong>Browser</strong> and <strong>ReportLab</strong> outputs come from PressFlow&apos;s preview renderers using substitute fonts. Only <strong>Adobe InDesign</strong>, via the bridge, produces native .indd files and PDF/X-4 print files with your licensed fonts. The <strong>IDML writer</strong> needs no InDesign machine: it hands designers an editable package that InDesign opens and sets with the fonts installed there.{" "}
               <Link href="/app/settings?tab=integrations" className="text-accent hover:underline">
                 Integration status
               </Link>
